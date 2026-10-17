@@ -38,15 +38,28 @@ jobs:
         run: python tools/check_proto.py app/proto/clouddrive.proto
 
       - name: 后端静态检查
-        run: python -u tools/check_backend.py
+        id: backend
+        continue-on-error: true
+        run: |
+          python -u tools/check_backend.py > backend_out.txt 2>&1
+          echo "code=$?" >> "$GITHUB_OUTPUT"
+          cat backend_out.txt
+          {
+            echo '### 后端静态检查结果'
+            echo '```'
+            cat backend_out.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 0
 
-      - name: 上传诊断报告
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: backend-check-report
-          path: backend_check_report.txt
-          if-no-files-found: warn
+      - name: 后端检查汇总
+        run: |
+          if grep -q "✓ 后端静态检查通过" backend_out.txt; then
+            echo "后端静态检查通过"
+          else
+            echo "::error::后端静态检查未通过，详见上方输出"
+            exit 1
+          fi
 
       - name: 前端静态检查
         run: python tools/check_ui.py static/index.html
