@@ -16,7 +16,13 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-SUITES = ["test_rules.py", "test_webhook.py", "test_scope.py", "test_backup.py"]
+SUITES = [
+    "test_rules.py",
+    "test_webhook.py",
+    "test_scope.py",
+    "test_backup.py",
+    "test_cd2_diag.py",
+]
 
 
 def main() -> int:

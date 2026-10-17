@@ -11,10 +11,19 @@ services:
     environment:
       TZ: Asia/Shanghai
       DATA_DIR: /app/data
-      # CD2 的 gRPC 端口是 19799（Web UI 才是 19798），别填错
-      CD2_DEFAULT_HOST: clouddrive2:19799
+      # CD2 的 gRPC 端口是 19799（Web UI 才是 19798），别填错。
+      #
+      # 三种常见部署，按实际情况选：
+      #   1) CD2 在宿主机/NAS 套件上          -> host.docker.internal:19799
+      #   2) CD2 是另一个容器且已映射 19799   -> host.docker.internal:19799（推荐）
+      #                                         或 宿主机局域网IP:19799
+      #   3) CD2 与本容器在同一 Docker 网络   -> <CD2容器名>:19799
+      CD2_DEFAULT_HOST: host.docker.internal:19799
     volumes:
       - ./data:/app/data
+    # Linux 上让 host.docker.internal 指向宿主机网关（Docker Desktop 自带，无需此项）
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8899/api/health"]
       interval: 30s

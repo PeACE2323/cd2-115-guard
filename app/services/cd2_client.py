@@ -394,6 +394,13 @@ class CD2Client:
                 self._status.last_error = details
                 raise CD2AuthError(f"CD2 鉴权失败: {details}") from exc
 
+            # 主机名解析失败属于配置错误，重试无意义，直接给出可操作建议
+            if self._is_name_resolution_error(details):
+                message = self.diagnose_connection_error(self._host, details)
+                self._status.connected = False
+                self._status.last_error = message
+                raise CD2Unavailable(message) from exc
+
             if code in _UNAVAILABLE_CODES and retry_on_reconnect:
                 self._reconnect_attempts += 1
                 delay = min(
@@ -417,11 +424,89 @@ class CD2Client:
                 except CD2Error:
                     raise
                 except BaseException as exc2:  # noqa: BLE001
+                    detail2 = _grpc_details(exc2)
                     raise CD2Unavailable(
-                        f"CD2 重连后仍失败: {_grpc_details(exc2)}"
+                        self.diagnose_connection_error(self._host, detail2)
                     ) from exc2
 
-            raise CD2Unavailable(f"CD2 调用 {method_name} 失败: {details}") from exc
+            raise CD2Unavailable(
+                self.diagnose_connection_error(self._host, details)
+            ) from exc
+    @staticmethod
+    def diagnose_connection_error(host: str, detail: str) -> str:
+        """把底层 gRPC 错误翻译成可操作的建议。
+
+        最常见的三类失败：
+
+        * ``address lookup failed`` / ``Domain name not found``
+          —— 主机名解析不了（容器名写错，或不在同一 Docker 网络）
+        * ``Connection refused``
+          —— 域名能解析但端口没监听（CD2 未映射 gRPC 端口）
+        * ``Deadline Exceeded``
+          —— 端口通了但不响应（可能不是 gRPC 端口）
+        """
+        lowered = (detail or "").lower()
+        target = host or "(未配置)"
+
+        if any(
+            k in lowered
+            for k in (
+                "lookup failed",
+                "domain name not found",
+                "no such host",
+                "errors resolving",
+                "name resolution",
+                "unknown host",
+            )
+        ):
+            return (
+                f"主机名解析失败：无法解析 {target} 这个地址。\n"
+                "常见原因与解决办法：\n"
+                "1) 容器名写错，或 CD2 容器与本容器不在同一个 Docker 网络。\n"
+                "   若 CD2 是另一个容器：可用宿主机 IP，或把两个容器加入同一网络"
+                "（docker network connect <net> <container>）后用 <CD2容器名>:19799。\n"
+                "2) 若 CD2 在宿主机/NAS 上：用 host.docker.internal:19799，\n"
+                "   并在 docker run 时加 --add-host host.docker.internal:host-gateway。\n"
+                "3) 不要填 http:// 前缀，只填 host:port。"
+            )
+
+        if "connection refused" in lowered:
+            return (
+                f"连接被拒绝：{target} 能解析，但该端口没有服务在监听。\n"
+                "最常见原因：填成了 CD2 的 Web 端口 19798。\n"
+                "**本项目走 gRPC，必须用 19799**，并确保 CD2 容器已映射该端口"
+                "（docker run 加 -p 19799:19799）。"
+            )
+
+        if "deadline" in lowered or "timeout" in lowered:
+            return (
+                f"连接超时：{target} 无响应。\n"
+                "请确认端口是 19799（gRPC），且没有被防火墙拦截。"
+            )
+
+        return f"无法连接 {target}：{detail}"
+
+    @staticmethod
+    def _is_name_resolution_error(detail: str) -> bool:
+        """判断是否为 DNS 解析类错误（这类错误重试无意义）。
+
+        覆盖 gRPC 在不同版本/平台下的几种措辞，包括真实的：
+            errors resolving clouddrive2:19799:
+            [field:hostname lookup error:address lookup failed for
+             clouddrive2:19799: Domain name not found]
+        """
+        lowered = (detail or "").lower()
+        return any(
+            k in lowered
+            for k in (
+                "lookup failed",
+                "domain name not found",
+                "no such host",
+                "errors resolving",
+                "name resolution",
+                "unknown host",
+            )
+        )
 
     # ------------------------------------------------------------ 认证
     async def fetch_token(self, username: str, password: str) -> str:

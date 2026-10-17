@@ -34,7 +34,12 @@ DATABASE_URL = f"sqlite:///{DB_PATH.as_posix()}"
 # 默认值（首次启动写入 app_settings）
 # ---------------------------------------------------------------------------
 DEFAULT_SETTINGS: dict[str, str] = {
-    "cd2.host": os.environ.get("CD2_DEFAULT_HOST", "clouddrive2:19799"),
+    # 默认指向宿主机。CD2 常见三种部署方式对应：
+    #   * CD2 跑在宿主机 / NAS 套件     -> host.docker.internal:19799
+    #   * CD2 是另一个容器（已映射端口）-> 宿主机IP:19799 或 host.docker.internal:19799
+    #   * CD2 与本容器在同一 Docker 网络 -> <CD2容器名>:19799
+    # 注意 gRPC 端口是 19799，不是 Web UI 的 19798。
+    "cd2.host": os.environ.get("CD2_DEFAULT_HOST", "host.docker.internal:19799"),
     "cd2.token": "",
     "cd2.username": "",
     "cd2.password": "",
