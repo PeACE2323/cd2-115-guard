@@ -226,10 +226,19 @@ uvicorn app.main:app --reload --port 8899
 python tests/run_all.py
 ```
 
+应用启动冒烟测试（会真实 import 应用并请求关键接口，需要先装依赖）：
+
+```bash
+pip install -r requirements.txt
+python tools/fetch_proto.py --out app/proto --offline
+python tests/test_smoke.py
+```
+
 静态检查（同样不依赖第三方库，适合 CI 前置校验）：
 
 ```bash
 python tools/check_backend.py                    # 未定义名 / 死导入 / 路由一致性
+python tools/check_fastapi.py                    # 路由返回注解是否会被当 Pydantic 模型
 python tools/check_ui.py static/index.html       # Vue 模板引用完整性
 python tools/check_proto.py app/proto/clouddrive.proto
 ```

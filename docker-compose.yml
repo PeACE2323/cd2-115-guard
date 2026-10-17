@@ -11,8 +11,8 @@ services:
     environment:
       TZ: Asia/Shanghai
       DATA_DIR: /app/data
-      # 与 CloudDrive2 同网络时可直接用容器名，例如 http://clouddrive2:19798
-      CD2_DEFAULT_HOST: clouddrive2:19798
+      # CD2 的 gRPC 端口是 19799（Web UI 才是 19798），别填错
+      CD2_DEFAULT_HOST: clouddrive2:19799
     volumes:
       - ./data:/app/data
     healthcheck:
