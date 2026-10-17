@@ -71,15 +71,14 @@ class ModuleCollector(ast.NodeVisitor):
             self.names.add(node.name)
         self.generic_visit(node)
 
-    def visit_arguments(self, node: ast.arguments) -> None:
-        for arg in (
-            *node.posonlyargs, *node.args, *node.kwonlyargs,
-        ):
-            self.names.add(arg.arg)
-        if node.vararg:
-            self.names.add(node.vararg.arg)
-        if node.kwarg:
-            self.names.add(node.kwarg.arg)
+    def visit_arg(self, node: ast.arg) -> None:
+        """收集函数参数名。
+
+        不用 ``visit_arguments``：``ast.arguments`` 不是 NodeVisitor 的标准
+        分派目标，不同 Python 版本下 generic_visit 是否触达它并不一致，
+        依赖它会导致跨版本结果不同（曾在 3.11 上误报“未定义名字”）。
+        """
+        self.names.add(node.arg)
         self.generic_visit(node)
 
 
@@ -308,6 +307,9 @@ def main() -> int:
         print(f"发现 {len(problems)} 个问题：")
         for p in problems:
             print("  ✗", p)
+        # 便于在 CI 里定位环境差异
+        print(f"\n[debug] Python {sys.version.split()[0]} on {sys.platform}")
+        print(f"[debug] CWD={target}")
     else:
         print("✓ 后端静态检查通过")
     return 1 if problems else 0

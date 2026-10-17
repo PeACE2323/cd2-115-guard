@@ -55,21 +55,11 @@ jobs:
             echo "PYTHONIOENCODING=${PYTHONIOENCODING:-<unset>}"
             echo "LANG=${LANG:-<unset>}"
             echo '```'
-            echo '### 文件编码 / 换行检查'
+            echo '### 文件编码 / 换行检查（有问题的文件才会出现在下面）'
             echo '```'
-            python - <<'PY'
-          from pathlib import Path
-          for p in sorted(Path('.').rglob('*.py')):
-              if '__pycache__' in str(p):
-                  continue
-              b = p.read_bytes()
-              bom = b.startswith(b'\xef\xbb\xbf')
-              crlf = b'\r\n' in b
-              if bom or crlf:
-                  print(f'{p}: BOM={bom} CRLF={crlf}')
-          print('(以上为空表示无 BOM/CRLF 问题)')
-          PY
+            python tools/diag_env.py
             echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
           } >> $GITHUB_STEP_SUMMARY
 
   # ---------------------------------------------------------------------------
