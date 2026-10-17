@@ -307,23 +307,38 @@ def main() -> int:
         print(f"发现 {len(problems)} 个问题：")
         for p in problems:
             print("  ✗", p)
-        # 便于在 CI 里定位环境差异
         print(f"\n[debug] Python {sys.version.split()[0]} on {sys.platform}")
-        print(f"[debug] CWD={target}")
-        # 同时写一份到文件，CI 里作为 artifact 上传
-        try:
-            diag = ROOT / "backend_check_report.txt"
-            diag.write_text(
-                "\n".join(problems)
-                + f"\n\nPython {sys.version}\nplatform={sys.platform}\ncwd={target}\n",
-                encoding="utf-8",
-            )
-        except OSError:
-            pass
     else:
         print("✓ 后端静态检查通过")
     return 1 if problems else 0
 
 
+def _write_report(text: str) -> None:
+    """把结果写到文件，CI 里作为 artifact 上传。
+
+    无论正常还是异常都写，保证问题可定位。
+    """
+    try:
+        out = ROOT / "backend_check_report.txt"
+        out.write_text(text, encoding="utf-8")
+    except OSError:
+        pass
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    import traceback
+
+    try:
+        code = main()
+    except BaseException:  # noqa: BLE001 - 兜底：把 traceback 也落到报告里
+        detail = traceback.format_exc()
+        print(detail, file=sys.stderr)
+        _write_report(
+            "check_backend.py 崩溃\n"
+            f"Python {sys.version}\nplatform={sys.platform}\n\n{detail}"
+        )
+        raise SystemExit(2)
+    else:
+        if code != 0:
+            _write_report("后端静态检查未通过（详见 stdout）\n")
+        raise SystemExit(code)
