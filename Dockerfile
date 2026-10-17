@@ -24,9 +24,17 @@ RUN apt-get update \
 WORKDIR ${APP_HOME}
 
 # ---- Python deps first so the layer is cached across source edits -----------
-COPY requirements.txt ./
+COPY requirements.txt requirements-optional.txt ./
+
+# 必需依赖：失败即中止
 RUN pip install --upgrade pip \
  && pip install -r requirements.txt
+
+# 可选依赖（115 相关）：失败只告警，不阻断构建。
+# 这样即使某个可选包因版本/网络问题装不上，CD2 侧功能依然可用。
+RUN pip install -r requirements-optional.txt \
+ || echo "WARNING: 可选依赖(115 相关)安装失败，115 云下载功能将不可用"
+
 # ---- Application sources ----------------------------------------------------
 COPY . .
 

@@ -1,34 +1,30 @@
 # ---------------------------------------------------------------------------
-# CD2-115-Guard runtime dependencies
+# CD2-115-Guard — 运行时依赖
 # ---------------------------------------------------------------------------
-# 基础镜像必须 >= 3.12：p115client 0.0.9.7.x 声明 Requires-Python >=3.12
+# 重要：基础镜像必须是 Python >= 3.12
+#   p115client（当前 0.0.9.7.2）、httpx_request、urllib3_future_request
+#   均声明 Requires-Python >=3.12，3.11 上 pip 会直接拒绝安装。
+#
+# 分为「必需」与「可选」两段：Dockerfile 先装必需项（失败即中止），
+# 再单独装可选项（失败只告警），这样某个可选包出问题不会阻断整个镜像。
 
+# ============================ 必需 ============================
 # --- Web API layer ---
 fastapi>=0.115,<1.0
 uvicorn[standard]>=0.34,<1.0
 pydantic>=2.10,<3.0
-pydantic-settings>=2.7,<3.0
 python-multipart>=0.0.20,<1.0
 
-# --- Persistence ---
+# --- 持久化 ---
 SQLAlchemy>=2.0,<3.0
 
-# --- Async / scheduling ---
+# --- 调度 ---
 APScheduler>=3.11,<4.0
 
 # --- CloudDrive2 gRPC ---
-# grpcio-tools 用于构建期把 clouddrive.proto 编译成 pb2
 grpcio>=1.68,<2.0
 grpcio-tools>=1.68,<2.0
 protobuf>=5.29,<6.0
 
-# --- 115 webdisk client ---
-# 以 PyPI 实际可用版本为准（当前最新 0.0.9.7.2）
-p115client>=0.0.9,<0.1
-# async_=True 需要一个能接收 async_ 的 HTTP 封装；缺省时服务会自动降级
-httpx_request>=0.0.2
-httpx>=0.28,<1.0
-urllib3_future_request>=0.0.4
-
-# --- Utilities ---
-tzdata>=2024.1
+# ============================ 可选 ============================
+# 见 requirements-optional.txt
