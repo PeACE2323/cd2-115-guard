@@ -13,7 +13,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -145,9 +145,13 @@ if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
-@app.get("/", include_in_schema=False)
-async def index() -> FileResponse | RedirectResponse:
-    """返回单页 WebUI。"""
+@app.get("/", include_in_schema=False, response_model=None)
+async def index() -> Response:
+    """返回单页 WebUI。
+
+    ``response_model=None`` 是必须的：返回类型是 Response 的子类联合，
+    FastAPI 会试图把它当 Pydantic 响应模型解析并在启动时报错。
+    """
     if INDEX_FILE.exists():
         # no-cache：避免改前端后浏览器拿到旧页面
         return FileResponse(
@@ -158,7 +162,7 @@ async def index() -> FileResponse | RedirectResponse:
     return RedirectResponse(url="/api/docs")
 
 
-@app.get("/favicon.ico", include_in_schema=False)
-async def favicon() -> JSONResponse:
+@app.get("/favicon.ico", include_in_schema=False, response_model=None)
+async def favicon() -> Response:
     """避免浏览器 404 噪音（WebUI 通过内联 SVG 图标展示）。"""
-    return JSONResponse(content={}, status_code=204)
+    return Response(status_code=204)

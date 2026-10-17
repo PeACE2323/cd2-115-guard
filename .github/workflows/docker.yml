@@ -41,8 +41,27 @@ jobs:
       - name: 后端静态检查
         run: python -u tools/check_backend.py
 
+      - name: FastAPI 路由检查
+        run: python tools/check_fastapi.py
+
       - name: 前端静态检查
         run: python tools/check_ui.py static/index.html
+
+      # -----------------------------------------------------------------------
+      # 冒烟测试：真实安装依赖并 import 应用。
+      # 这一步是为了抓「静态检查抓不到、只有真正启动才报」的错误
+      # （例如 FastAPI 把返回注解当 Pydantic 模型解析失败）。
+      # -----------------------------------------------------------------------
+      - name: 安装必需依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 编译 proto
+        run: python tools/fetch_proto.py --out app/proto --offline
+
+      - name: 应用启动冒烟测试
+        run: python tests/test_smoke.py
 
   # ---------------------------------------------------------------------------
   # 1.5 依赖可解析性检查
