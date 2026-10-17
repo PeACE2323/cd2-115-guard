@@ -310,6 +310,16 @@ def main() -> int:
         # 便于在 CI 里定位环境差异
         print(f"\n[debug] Python {sys.version.split()[0]} on {sys.platform}")
         print(f"[debug] CWD={target}")
+        # 同时写一份到文件，CI 里作为 artifact 上传
+        try:
+            diag = ROOT / "backend_check_report.txt"
+            diag.write_text(
+                "\n".join(problems)
+                + f"\n\nPython {sys.version}\nplatform={sys.platform}\ncwd={target}\n",
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
     else:
         print("✓ 后端静态检查通过")
     return 1 if problems else 0
