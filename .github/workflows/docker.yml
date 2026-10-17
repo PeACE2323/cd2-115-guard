@@ -45,10 +45,34 @@ jobs:
         run: python tools/check_ui.py static/index.html
 
   # ---------------------------------------------------------------------------
+  # 1.5 依赖可解析性检查（比等 Docker 构建快得多，且能看到 pip 的完整报错）
+  # ---------------------------------------------------------------------------
+  deps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: pip 依赖解析（dry-run，不实际安装）
+        run: |
+          python -m pip install --upgrade pip
+          pip install --dry-run --report /tmp/report.json -r requirements.txt
+          echo "=== 依赖解析成功 ==="
+          python - <<'PY'
+          import json
+          data = json.load(open('/tmp/report.json'))
+          for p in sorted(data.get('install', []), key=lambda x: x['metadata']['name'].lower()):
+              print(f"{p['metadata']['name']:35} {p['metadata']['version']}")
+          PY
+
+  # ---------------------------------------------------------------------------
   # 2. 构建镜像并推送到 GHCR
   # ---------------------------------------------------------------------------
   build:
-    needs: test
+    needs: [test, deps]
     runs-on: ubuntu-latest
     permissions:
       contents: read
