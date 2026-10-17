@@ -38,10 +38,39 @@ jobs:
         run: python tools/check_proto.py app/proto/clouddrive.proto
 
       - name: 后端静态检查
-        run: python tools/check_backend.py
+        run: python -u tools/check_backend.py
 
       - name: 前端静态检查
         run: python tools/check_ui.py static/index.html
+
+      # 失败时把诊断信息写进 step summary，避免日志被折叠看不到
+      - name: 诊断输出
+        if: failure()
+        run: |
+          {
+            echo '### 环境信息'
+            echo '```'
+            python -V
+            uname -a
+            echo "PYTHONIOENCODING=${PYTHONIOENCODING:-<unset>}"
+            echo "LANG=${LANG:-<unset>}"
+            echo '```'
+            echo '### 文件编码 / 换行检查'
+            echo '```'
+            python - <<'PY'
+          from pathlib import Path
+          for p in sorted(Path('.').rglob('*.py')):
+              if '__pycache__' in str(p):
+                  continue
+              b = p.read_bytes()
+              bom = b.startswith(b'\xef\xbb\xbf')
+              crlf = b'\r\n' in b
+              if bom or crlf:
+                  print(f'{p}: BOM={bom} CRLF={crlf}')
+          print('(以上为空表示无 BOM/CRLF 问题)')
+          PY
+            echo '```'
+          } >> $GITHUB_STEP_SUMMARY
 
   # ---------------------------------------------------------------------------
   # 2. 构建镜像并推送到 GHCR
