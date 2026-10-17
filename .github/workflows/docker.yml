@@ -63,15 +63,24 @@ jobs:
           pip install --dry-run --report /tmp/report.json -r requirements.txt > /tmp/pip_out.txt 2>&1
           code=$?
           set -e
-          # 无论成败都把 pip 输出写进 summary，避免日志被折叠/截断
-          {
-            echo "## pip 退出码: $code"
-            echo '```'
-            tail -n 60 /tmp/pip_out.txt
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
           cat /tmp/pip_out.txt
+          # 把 pip 输出提交回仓库，便于直接查看（日志常被折叠/截断）
+          if [ $code -ne 0 ]; then
+            cp /tmp/pip_out.txt pip_error.txt
+          else
+            echo "PIP OK" > pip_error.txt
+          fi
           exit $code
+
+      - name: 提交 pip 输出
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "pip-log-${GITHUB_RUN_ID}" || true
+          git add -f pip_error.txt
+          git commit -m "ci: pip 输出 (run ${GITHUB_RUN_ID})" || echo "无变更"
+          git push -f origin "pip-log-${GITHUB_RUN_ID}" || echo "推送失败"
 
   # ---------------------------------------------------------------------------
   # 2. 构建镜像并推送到 GHCR
