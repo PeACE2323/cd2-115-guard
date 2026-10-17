@@ -38,7 +38,19 @@ jobs:
         run: python tools/check_proto.py app/proto/clouddrive.proto
 
       - name: 后端静态检查
-        run: python -u tools/check_backend.py
+        run: |
+          set +e
+          python -u tools/check_backend.py
+          code=$?
+          echo "=== exit=$code ==="
+          # 把完整输出推到 step summary，即使日志被折叠也能看到
+          {
+            echo '## 后端静态检查 (exit='"$code"')'
+            echo '```'
+            python -u tools/check_backend.py 2>&1 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit $code
 
       - name: 前端静态检查
         run: python tools/check_ui.py static/index.html
