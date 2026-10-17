@@ -29,7 +29,8 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          # 与 Dockerfile 基础镜像保持一致（p115client 需要 >=3.12）
+          python-version: "3.12"
 
       - name: 单元测试
         run: python tests/run_all.py
@@ -38,32 +39,9 @@ jobs:
         run: python tools/check_proto.py app/proto/clouddrive.proto
 
       - name: 后端静态检查
-        id: backend
-        continue-on-error: true
-
         run: python -u tools/check_backend.py
 
-      # 失败时把报告提交回仓库（分支 ci-report/<run_id>），便于直接查看内容
-      - name: 上传失败报告
-        if: steps.backend.outcome == 'failure'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          if [ ! -f backend_check_report.txt ]; then
-            echo "check_backend.py 没有生成报告文件，说明在写文件前就失败了" > backend_check_report.txt
-          fi
-          echo "----- 报告内容 -----"
-          cat backend_check_report.txt || true
-          echo "--------------------"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -b "ci-report/${GITHUB_RUN_ID}" || true
-          git add -f backend_check_report.txt
-          git commit -m "ci: 后端检查失败报告 (run ${GITHUB_RUN_ID})" || true
-          git push -f origin "ci-report/${GITHUB_RUN_ID}" || true
-
       - name: 前端静态检查
-        if: steps.backend.outcome == 'success'
         run: python tools/check_ui.py static/index.html
 
   # ---------------------------------------------------------------------------

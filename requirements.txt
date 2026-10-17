@@ -1,34 +1,34 @@
 # ---------------------------------------------------------------------------
 # CD2-115-Guard runtime dependencies
 # ---------------------------------------------------------------------------
-# Base image python:3.11-slim + grpcio wheel => no compile toolchain needed.
+# 基础镜像必须 >= 3.12：p115client 0.0.9.7.x 声明 Requires-Python >=3.12
 
 # --- Web API layer ---
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-pydantic==2.10.4
-pydantic-settings==2.7.1
-python-multipart==0.0.20
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.34,<1.0
+pydantic>=2.10,<3.0
+pydantic-settings>=2.7,<3.0
+python-multipart>=0.0.20,<1.0
 
 # --- Persistence ---
-SQLAlchemy==2.0.36
+SQLAlchemy>=2.0,<3.0
 
 # --- Async / scheduling ---
-APScheduler==3.11.0
+APScheduler>=3.11,<4.0
 
 # --- CloudDrive2 gRPC ---
-grpcio==1.68.1
-grpcio-tools==1.68.1
-protobuf==5.29.2
+# grpcio-tools 用于构建期把 clouddrive.proto 编译成 pb2
+grpcio>=1.68,<2.0
+grpcio-tools>=1.68,<2.0
+protobuf>=5.29,<6.0
 
 # --- 115 webdisk client ---
-# P115Client(cookies) / check_response / async_=True / client.request
-p115client>=1.0.3
-# async_=True 需要 p115client 包装 httpx 的 request
+# 以 PyPI 实际可用版本为准（当前最新 0.0.9.7.2）
+p115client>=0.0.9,<0.1
+# async_=True 需要一个能接收 async_ 的 HTTP 封装；缺省时服务会自动降级
 httpx_request>=0.0.2
-httpx==0.28.1
-# p115client 的默认同步请求实现
+httpx>=0.28,<1.0
 urllib3_future_request>=0.0.4
 
 # --- Utilities ---
-tzdata==2024.2
+tzdata>=2024.1

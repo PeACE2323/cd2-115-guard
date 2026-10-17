@@ -1,8 +1,11 @@
 # syntax=docker/dockerfile:1
 # =============================================================================
 # CD2-115-Guard  —  CloudDrive2 upload guard + 115 offline-download reaper
+# -----------------------------------------------------------------------------
+# 注意：基础镜像必须是 Python >= 3.12，因为 p115client 声明 Requires-Python
+#       >=3.12（3.11 上 pip 会直接拒绝安装）。
 # =============================================================================
-FROM python:3.11-slim AS base
+FROM python:3.12-slim AS base
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
