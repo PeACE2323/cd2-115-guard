@@ -38,26 +38,28 @@ jobs:
         run: python tools/check_proto.py app/proto/clouddrive.proto
 
       - name: 后端静态检查
-        run: python -u tools/check_backend.py
+        run: |
+          set -x
+          python -u tools/check_backend.py 2>&1 | tee /tmp/backend_check.log
+          echo "exit_code=${PIPESTATUS[0]}"
+          exit ${PIPESTATUS[0]}
 
       - name: 前端静态检查
         run: python tools/check_ui.py static/index.html
 
       # 失败时把诊断信息写进 step summary，避免日志被折叠看不到
       - name: 诊断输出
-        if: failure()
+        if: always()
         run: |
           {
             echo '### 环境信息'
             echo '```'
             python -V
-            uname -a
             echo "PYTHONIOENCODING=${PYTHONIOENCODING:-<unset>}"
-            echo "LANG=${LANG:-<unset>}"
             echo '```'
-            echo '### 文件编码 / 换行检查（有问题的文件才会出现在下面）'
+            echo '### 后端检查原始输出'
             echo '```'
-            python tools/diag_env.py
+            cat /tmp/backend_check.log 2>/dev/null || echo '(无输出文件)'
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           } >> $GITHUB_STEP_SUMMARY
