@@ -1,0 +1,34 @@
+# ---------------------------------------------------------------------------
+# CD2-115-Guard runtime dependencies
+# ---------------------------------------------------------------------------
+# Base image python:3.11-slim + grpcio wheel => no compile toolchain needed.
+
+# --- Web API layer ---
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.1
+python-multipart==0.0.20
+
+# --- Persistence ---
+SQLAlchemy==2.0.36
+
+# --- Async / scheduling ---
+APScheduler==3.11.0
+
+# --- CloudDrive2 gRPC ---
+grpcio==1.68.1
+grpcio-tools==1.68.1
+protobuf==5.29.2
+
+# --- 115 webdisk client ---
+# P115Client(cookies) / check_response / async_=True / client.request
+p115client>=1.0.3
+# async_=True 需要 p115client 包装 httpx 的 request
+httpx_request>=0.0.2
+httpx==0.28.1
+# p115client 的默认同步请求实现
+urllib3_future_request>=0.0.4
+
+# --- Utilities ---
+tzdata==2024.2

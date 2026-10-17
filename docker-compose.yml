@@ -1,0 +1,44 @@
+services:
+  cd2-115-guard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: cd2-115-guard:latest
+    container_name: cd2-115-guard
+    restart: unless-stopped
+    ports:
+      - "8899:8899"
+    environment:
+      TZ: Asia/Shanghai
+      DATA_DIR: /app/data
+      # 与 CloudDrive2 同网络时可直接用容器名，例如 http://clouddrive2:19798
+      CD2_DEFAULT_HOST: clouddrive2:19798
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8899/api/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    # 若 CD2 以 host 网络运行，取消下面的注释改用宿主网络
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # 可选：若尚未部署 CloudDrive2，可一并启动（仅 gRPC 与 Web 端口）
+  clouddrive2:
+    image: cloudnas/clouddrive2:latest
+    container_name: clouddrive2
+    restart: unless-stopped
+    ports:
+      - "19798:19798"   # Web UI / gRPC-Web
+      - "19799:19799"   # gRPC (HTTP/2 h2c, 供 CD2-115-Guard 调用)
+    volumes:
+      - ./cd2-config:/Config
+    privileged: true
+    profiles: ["with-cd2"]   # 默认不启动：docker compose --profile with-cd2 up -d

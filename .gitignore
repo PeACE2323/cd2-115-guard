@@ -1,0 +1,21 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 运行时数据（数据库、Cookie、日志）不入库
+data/*
+!data/.gitkeep
+cd2-config/
+
+# proto 生成物（构建期由 tools/fetch_proto.py 生成）
+app/proto/clouddrive_pb2.py
+app/proto/clouddrive_pb2.pyi
+app/proto/clouddrive_pb2_grpc.py
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.DS_Store
+Thumbs.db
