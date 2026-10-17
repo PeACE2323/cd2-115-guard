@@ -14,6 +14,8 @@ fastapi>=0.115,<1.0
 uvicorn[standard]>=0.34,<1.0
 pydantic>=2.10,<3.0
 python-multipart>=0.0.20,<1.0
+# Starlette 的 TestClient 依赖 httpx；运行期也需要它做 HTTP 调用
+httpx>=0.28,<1.0
 
 # --- 持久化 ---
 SQLAlchemy>=2.0,<3.0

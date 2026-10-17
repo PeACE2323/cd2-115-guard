@@ -30,9 +30,17 @@ os.environ["GUARD_DB_PATH"] = str(_TMP / "guard.db")
 os.environ["P115_COOKIE_FILE"] = str(_TMP / "115-cookies.txt")
 
 
+class _Skipped(Exception):
+    """内部使用：表示该测试被跳过。"""
+
+
 def _skip(reason: str) -> None:
-    print(f"SKIP: {reason}")
-    sys.exit(0)
+    """标记跳过并抛出，由主循环处理。
+
+    不能直接 sys.exit(0)：那会终止整个测试进程，
+    让后面的测试也没机会运行，看起来像「全过了」。
+    """
+    raise _Skipped(reason)
 
 
 def test_import_app() -> None:
@@ -161,9 +169,13 @@ def test_webhook_accepts_payload() -> None:
 if __name__ == "__main__":
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     failed = 0
+    skipped = 0
     for fn in tests:
         try:
             fn()
+        except _Skipped as exc:
+            print(f"SKIP {fn.__name__}: {exc}")
+            skipped += 1
         except AssertionError as exc:
             print(f"✗ {fn.__name__}: {exc}")
             failed += 1
@@ -174,5 +186,8 @@ if __name__ == "__main__":
             traceback.print_exc()
             failed += 1
     print()
-    print(f"共 {len(tests)} 个测试，失败 {failed} 个")
+    print(f"共 {len(tests)} 个测试，失败 {failed} 个，跳过 {skipped} 个")
+    if skipped == len(tests):
+        print("警告：全部测试被跳过，冒烟验证未真正执行！")
+        sys.exit(1)
     sys.exit(1 if failed else 0)
