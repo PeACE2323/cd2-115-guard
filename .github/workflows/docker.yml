@@ -45,7 +45,9 @@ jobs:
         run: python tools/check_ui.py static/index.html
 
   # ---------------------------------------------------------------------------
-  # 1.5 依赖可解析性检查（比等 Docker 构建快得多，且能看到 pip 的完整报错）
+  # 1.5 依赖可解析性检查
+  #     独立成 job 的价值：Docker 构建要几分钟，而 pip 解析只要几秒；
+  #     依赖冲突能在这里被最快发现并定位到具体包。
   # ---------------------------------------------------------------------------
   deps:
     runs-on: ubuntu-latest
@@ -56,28 +58,14 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: pip 依赖解析（dry-run，不实际安装）
+      - name: 必需依赖可解析
         run: |
           python -m pip install --upgrade pip
-          set +e
-          pip install --dry-run -r requirements.txt > /tmp/pip_out.txt 2>&1
-          code=$?
-          set -e
-          echo "PIP_EXIT=$code"
-          # 只打印关键行，确保不被日志截断：ERROR / Could not / conflict
-          grep -iE "error|could not|conflict|no matching|requires|incompatible" /tmp/pip_out.txt | head -n 25 || true
-          echo "---SUMMARY---"
-          tail -n 8 /tmp/pip_out.txt || true
-          exit $code
+          pip install --dry-run -r requirements.txt
 
-      # 失败时把完整日志作为 artifact 上传（需要登录才能下载，但至少不丢信息）
-      - name: 上传 pip 日志
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: pip-log
-          path: /tmp/pip_out.txt
-          if-no-files-found: warn
+      - name: 可选依赖可解析（115 相关，允许失败）
+        continue-on-error: true
+        run: pip install --dry-run -r requirements-optional.txt
 
   # ---------------------------------------------------------------------------
   # 2. 构建镜像并推送到 GHCR

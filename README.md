@@ -82,11 +82,33 @@ cd2-115-guard/
 └── README.md
 ```
 
-## 快速开始（Docker）
+## 快速开始
+
+### 方式一：直接用预构建镜像（推荐）
+
+镜像由 GitHub Actions 自动构建并发布到 GHCR：
+
+```bash
+docker run -d \
+  --name cd2-115-guard \
+  --restart unless-stopped \
+  -p 8899:8899 \
+  -e TZ=Asia/Shanghai \
+  -v /path/to/cd2-115-guard-data:/app/data \
+  ghcr.io/peace2323/cd2-115-guard:latest
+```
+
+打开 `http://<host>:8899`。
+
+> GHCR 包默认是 private，首次拉取需先登录：
+> `echo <你的PAT> | docker login ghcr.io -u PeACE2323 --password-stdin`
+> 登录后到 GitHub → Packages → cd2-115-guard → Settings 把可见性改为 Public，
+> 之后其他人也能直接拉取。
+
+### 方式二：本地构建
 
 ```bash
 docker compose up -d --build
-# 打开 http://<host>:8899
 ```
 
 首次启动后进入「系统设置」填写 CD2 地址与 Token、115 Cookie，点击「连接测试」确认，
