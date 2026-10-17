@@ -59,14 +59,19 @@ jobs:
       - name: pip 依赖解析（dry-run，不实际安装）
         run: |
           python -m pip install --upgrade pip
-          pip install --dry-run --report /tmp/report.json -r requirements.txt
-          echo "=== 依赖解析成功 ==="
-          python - <<'PY'
-          import json
-          data = json.load(open('/tmp/report.json'))
-          for p in sorted(data.get('install', []), key=lambda x: x['metadata']['name'].lower()):
-              print(f"{p['metadata']['name']:35} {p['metadata']['version']}")
-          PY
+          set +e
+          pip install --dry-run --report /tmp/report.json -r requirements.txt > /tmp/pip_out.txt 2>&1
+          code=$?
+          set -e
+          # 无论成败都把 pip 输出写进 summary，避免日志被折叠/截断
+          {
+            echo "## pip 退出码: $code"
+            echo '```'
+            tail -n 60 /tmp/pip_out.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          cat /tmp/pip_out.txt
+          exit $code
 
   # ---------------------------------------------------------------------------
   # 2. 构建镜像并推送到 GHCR
