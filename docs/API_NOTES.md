@@ -160,7 +160,6 @@ grpc.insecure_channel(target, options=[("grpc.keepalive_time_ms", 30000), ...])
 ```
 
 ### 端口：19798，**不是** 19799 **已核实（曾判断错误）**
-
 来自 CD2 官方帮助文档 `https://www.clouddrive2.com/en/help.html`：
 
 > The core service's management interface runs on **19798** — the same on

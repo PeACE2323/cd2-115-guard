@@ -292,6 +292,13 @@
 
         <!-- 秒传记录 -->
         <div v-if="taskTab==='instant'" class="space-y-3">
+          <div class="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-xs text-emerald-900 leading-relaxed">
+            <strong>秒传判定依据</strong>：CD2 上传前会先算文件哈希发给 115，
+            若 115 上已存在相同文件（别人的网盘里有也算），服务器就<strong>不接收文件数据</strong>，
+            直接建一条指向已有文件的记录。所以秒传的特征是
+            <strong>「实际传输 ≈ 0 字节」</strong>，而不是「耗时短」。
+            下表的「实际传输」列就是判定证据：显示 <code class="mono">0（未传数据）</code> 即为真秒传。
+          </div>
           <div class="flex gap-2 items-center">
             <input v-model="instantQuery" @keyup.enter="loadInstant(1)" placeholder="搜索文件名/路径…"
               class="px-3 py-1.5 border border-slate-300 rounded-md text-sm w-64 focus:outline-none focus:ring-2 focus:ring-emerald-400">
@@ -307,6 +314,7 @@
                   <th class="px-4 py-2.5 text-left">源路径</th>
                   <th class="px-4 py-2.5 text-left">规则</th>
                   <th class="px-4 py-2.5 text-right">大小</th>
+                  <th class="px-4 py-2.5 text-right" title="完成时实际传输的字节数。接近 0 说明服务器已有相同文件，未接收数据（真秒传）">实际传输</th>
                   <th class="px-4 py-2.5 text-right">耗时</th>
                   <th class="px-4 py-2.5 text-right">完成时间</th>
                 </tr>
@@ -317,11 +325,18 @@
                   <td class="px-4 py-2.5 text-xs text-slate-500 max-w-[16rem] truncate mono" :title="r.source_path">{{ r.source_path }}</td>
                   <td class="px-4 py-2.5 text-xs">{{ r.rule_name || '—' }}</td>
                   <td class="px-4 py-2.5 text-right text-xs">{{ fmtSize(r.size) }}</td>
-                  <td class="px-4 py-2.5 text-right mono text-xs text-emerald-600">{{ fmtDur(r.duration_sec) }}</td>
+                  <td class="px-4 py-2.5 text-right mono text-xs">
+                    <span :class="r.transferred_bytes === 0 ? 'text-emerald-600 font-medium' : 'text-slate-500'">
+                      {{ r.transferred_bytes === 0 ? '0（未传数据）' : fmtSize(r.transferred_bytes) }}
+                    </span>
+                  </td>
+                  <td class="px-4 py-2.5 text-right mono text-xs text-slate-500">{{ fmtDur(r.duration_sec) }}</td>
                   <td class="px-4 py-2.5 text-right text-xs text-slate-500">{{ fmtTime(r.finished_at) }}</td>
                 </tr>
                 <tr v-if="!instantPage.items.length">
-                  <td colspan="6" class="px-4 py-10 text-center text-slate-400 text-sm">暂无秒传记录</td>
+                  <td colspan="7" class="px-4 py-10 text-center text-slate-400 text-sm">
+                    暂无秒传记录
+                  </td>
                 </tr>
               </tbody>
             </table>

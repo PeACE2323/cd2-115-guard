@@ -124,6 +124,13 @@ class InstantUpload(Base):
     finished_at: Mapped[float] = mapped_column(Float, nullable=False)
     duration_sec: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
 
+    # 秒传判定的证据：完成时实际传输的字节数。
+    # 真正的秒传该值应接近 0（服务器已有相同哈希，未接收文件数据）。
+    # 保留它便于用户自行核对判定是否正确。
+    transferred_bytes: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=_now_dt
     )
@@ -407,6 +414,9 @@ def migrate_added_columns() -> None:
     wanted: dict[str, list[tuple[str, str]]] = {
         "upload_tasks": [
             ("queued_sec", "FLOAT NOT NULL DEFAULT 0.0"),
+        ],
+        "instant_uploads": [
+            ("transferred_bytes", "BIGINT NOT NULL DEFAULT 0"),
         ],
     }
 

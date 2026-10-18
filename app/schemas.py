@@ -175,6 +175,8 @@ class InstantUploadOut(ORMModel):
     first_seen_at: float
     finished_at: float
     duration_sec: float
+    # 完成时实际传输的字节数：接近 0 说明确实没传数据（真秒传）
+    transferred_bytes: int = 0
 
 
 # ===========================================================================

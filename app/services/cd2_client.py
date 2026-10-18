@@ -134,6 +134,44 @@ class UploadTask:
             return 0.0
         return min(100.0, self.transferred_bytes / self.size * 100.0)
 
+    # ------------------------------------------------------------------
+    # 秒传判定
+    # ------------------------------------------------------------------
+    # 原理（CD2 官方文档 + 通用秒传机制）：
+    #   上传前客户端先算出文件的哈希值发给服务器；服务器发现该文件
+    #   已存在（任何用户的网盘里），就**不再接收文件数据**，
+    #   只建一条指向已有数据的记录。因此真正的秒传：
+    #       * 客户端实际传输的字节数 ≈ 0
+    #       * 从开始到完成只花掉「算哈希 + 预处理」的时间
+    #
+    # 所以判断秒传最可靠的依据不是「耗时是否小于阈值」，
+    # 而是 **是否真的传了数据**。耗时只作为辅助（防止把 0 字节的空文件误判）。
+
+    @property
+    def transferred_ratio(self) -> float:
+        """已传输字节占文件大小的比例（0~1）。"""
+        if self.size <= 0:
+            return 0.0
+        return min(1.0, self.transferred_bytes / self.size)
+
+    @property
+    def is_instant_by_bytes(self) -> bool:
+        """按「是否真的传了数据」判定秒传。
+
+        秒传的任务在完成时 ``transferedBytes`` 会远小于 ``size``
+        （通常为 0）。这里用 1% 作为容差，兼容 CD2 在预处理阶段
+        可能统计到的少量内部读取。
+        """
+        if self.size <= 0:
+            # 没有大小信息时无法用字节判定，交由调用方用耗时兜底
+            return True
+        return self.transferred_ratio < 0.01
+
+    @property
+    def is_real_upload_by_bytes(self) -> bool:
+        """明确发生过实际数据传输（即非秒传）。"""
+        return not self.is_instant_by_bytes
+
 
 @dataclass(slots=True)
 class CD2Status:

@@ -302,6 +302,9 @@ class GuardScheduler:
             for row in session.query(UploadTaskSnapshot).all()
         }
 
+        # 规则按 id 索引：任务消失时需要用其规则阈值判定秒传
+        rules_by_id = {r.id: r for r in rules}
+
         # ---- 2. 读取活跃的重试记录（按 task_key 索引）----
         retry_rows = {
             row.task_key: row
@@ -464,19 +467,73 @@ class GuardScheduler:
                     C.MAX_INTERCEPT_PER_ROUND,
                 )
 
-        # ---- 4. 标记消失的任务 ----
+        # ---- 4. 处理从 CD2 列表中消失的任务 ----
+        #
+        # 这两类任务都可能消失：
+        #   a) 正常完成 —— CD2 把已完成任务移出「上传任务」列表
+        #   b) 秒传 —— 太快，在两次轮询之间就完成并消失了
+        #
+        # 秒传尤其可能「来不及看到 Finish 就消失」，若直接判 gone 就会
+        # 漏记。这里补一条「消失即完成」的兜底判定。
         for key, snapshot in existing.items():
             if key in seen_keys:
                 continue
             if snapshot.state in ("done", "gone"):
                 continue
+
+            # 消失满一个宽限期仍未再出现 —— 视为已结束
             if now - snapshot.last_seen_at > C.TASK_GONE_GRACE_SEC:
-                snapshot.state = "gone"
+                rule = rules_by_id.get(snapshot.matched_rule_id) if snapshot.matched_rule_id else None
+                completed = self._handle_task_vanished(session, snapshot, now, rule)
+                snapshot.state = "done" if completed else "gone"
 
         if unmatched_keys:
             logger.debug(
                 "本轮忽略 %d 个不在监控规则内的任务", len(unmatched_keys)
             )
+
+    def _handle_task_vanished(
+        self,
+        session,
+        snapshot: UploadTaskSnapshot,
+        now: float,
+        rule,
+    ) -> bool:
+        """任务从列表中消失时判定它是否属于「秒传完成」。
+
+        判定依据：消失前最后一次观测到的 ``transferred`` 远小于 ``size``，
+        说明数据从来没有真正传过 —— 这正是秒传的特征。
+
+        :return: True 表示已按秒传记录处理，False 表示任务确实已离开。
+        """
+        size = int(snapshot.size or 0)
+        transferred = int(snapshot.transferred or 0)
+
+        if size <= 0:
+            return False
+        # 已经传了明显的数据量，说明是真实上传后结束（或失败），不记秒传
+        if transferred / size >= 0.01:
+            return False
+        # 状态是明确的失败，不记秒传
+        if snapshot.status_enum in C.CD2_STATUS_FAILED:
+            return False
+        # 从未被任何规则命中，不记
+        if snapshot.matched_rule_id is None:
+            return False
+
+        elapsed = max(0.0, now - (snapshot.first_seen_at or now))
+        logger.info(
+            "任务消失且未传输数据，判定为秒传完成: %s（%d 字节 / 共 %d）",
+            snapshot.file_name, transferred, size,
+        )
+        self._record_instant_upload(
+            session,
+            snapshot,
+            elapsed,
+            now,
+            rule.timeout_threshold if rule is not None else None,
+        )
+        return True
 
     def _record_instant_upload(
         self,
@@ -488,15 +545,46 @@ class GuardScheduler:
     ) -> None:
         """写入秒传记录（同一 task_key 只写一次）。
 
-        “秒传”的业务定义是：命中规则 **且** 上传耗时 ≤ 规则阈值就完成。
-        超阈值才完成的属于“慢上传”，不该计入秒传统计。
+        **秒传的判定依据是两个条件同时满足**：
+
+        1. 文件最终完成了（调用方已确认 status == Finish）；
+        2. **没有真正传输过文件数据** —— 即 ``transfered`` 远小于 ``size``。
+
+        为什么以字节数为主、耗时为辅：
+
+        秒传的本质是「服务器已有相同哈希的文件，因此不接收数据」，
+        所以秒传任务从头到尾都不该有明显的数据传输。
+        而耗时受排队、并发、CDN 抖动影响很大 —— 之前用「耗时 ≤ 阈值」
+        判定，导致：
+          * 排队久的秒传任务被误判成非秒传（记录为空）
+          * 网络快时普通上传被误算成秒传
+
+        阈值（timeout_threshold）保留为**兜底**：当 size 为 0 无法用
+        字节判断时，才退回用耗时。
         """
-        if timeout_threshold is not None and elapsed > timeout_threshold:
-            logger.info(
-                "完成但超出阈值（不算秒传）: %s（%.1fs > %ds）",
-                snapshot.file_name, elapsed, timeout_threshold,
-            )
-            return
+        size = int(getattr(snapshot, "size", 0) or 0)
+        transferred = int(getattr(snapshot, "transferred", 0) or 0)
+
+        # ---- 主判据：是否真的传了数据 ----
+        if size > 0:
+            ratio = transferred / size
+            if ratio >= 0.01:
+                logger.info(
+                    "完成但传输了 %.1f%% 数据（非秒传，不计入秒传记录）: %s",
+                    ratio * 100, snapshot.file_name,
+                )
+                return
+            # 通过字节判据 → 是秒传
+            basis = "no-data-transfer"
+        else:
+            # ---- 兜底：无大小信息时用耗时 ----
+            if timeout_threshold is not None and elapsed > timeout_threshold:
+                logger.info(
+                    "完成但超出阈值且无大小信息（不计秒传）: %s（%.1fs > %ds）",
+                    snapshot.file_name, elapsed, timeout_threshold,
+                )
+                return
+            basis = "duration-fallback"
 
         exists = (
             session.query(InstantUpload.id)
@@ -517,11 +605,12 @@ class GuardScheduler:
                 first_seen_at=snapshot.first_seen_at,
                 finished_at=now,
                 duration_sec=round(elapsed, 3),
+                transferred_bytes=transferred,
             )
         )
         logger.info(
-            "秒传: %s（耗时 %.1fs，规则 %s）",
-            snapshot.file_name, elapsed, snapshot.matched_rule_name,
+            "秒传: %s（大小 %d，实际传输 %d 字节，耗时 %.1fs，依据 %s）",
+            snapshot.file_name, size, transferred, elapsed, basis,
         )
 
     async def _intercept_tasks(
