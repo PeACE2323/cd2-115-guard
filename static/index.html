@@ -247,7 +247,7 @@
                 <th class="px-4 py-2.5 text-left">规则</th>
                 <th class="px-4 py-2.5 text-left">状态</th>
                 <th class="px-4 py-2.5 text-right">进度</th>
-                <th class="px-4 py-2.5 text-right">已持续</th>
+                <th class="px-4 py-2.5 text-right">传输 / 排队</th>
               </tr>
             </thead>
             <tbody>
@@ -264,6 +264,7 @@
                 </td>
                 <td class="px-4 py-2.5">
                   <span :class="['text-[11px] px-1.5 py-0.5 rounded', statusClass(t.status_enum)]">{{ t.status_text }}</span>
+                  <span v-if="t.state==='queued'" class="text-[10px] text-slate-400 ml-1" title="CD2 有并发上限，排队属正常，不计入超时">排队中</span>
                 </td>
                 <td class="px-4 py-2.5 text-right">
                   <div class="flex items-center justify-end gap-2">
@@ -273,7 +274,12 @@
                     <span class="text-xs text-slate-500 w-10 text-right">{{ t.progress.toFixed(0) }}%</span>
                   </div>
                 </td>
-                <td class="px-4 py-2.5 text-right mono text-xs">{{ fmtDur(t.elapsed_sec) }}</td>
+                <td class="px-4 py-2.5 text-right mono text-xs whitespace-nowrap">
+                  <span class="text-slate-700">{{ fmtDur(t.transfer_sec) }}</span>
+                  <span v-if="t.queued_sec > 0" class="text-slate-400" :title="'其中排队 ' + fmtDur(t.queued_sec) + '，不计入超时'">
+                    / {{ fmtDur(t.queued_sec) }}
+                  </span>
+                </td>
               </tr>
               <tr v-if="!liveTasks.length">
                 <td colspan="6" class="px-4 py-10 text-center text-slate-400 text-sm">
@@ -333,6 +339,22 @@
 
         <!-- 重试队列 -->
         <div v-if="taskTab==='retry'" class="space-y-3">
+          <!-- 状态速览：点击即可筛选，避免「有失败数字却找不到记录」 -->
+          <div class="flex gap-2 flex-wrap">
+            <button v-for="s in retryStatChips" :key="s.key" type="button"
+              @click="retryStatus = (retryStatus === s.key ? '' : s.key); loadNonInstant(1)"
+              :class="['px-2.5 py-1 rounded-md text-xs border transition',
+                retryStatus === s.key
+                  ? 'bg-slate-800 text-white border-slate-800'
+                  : 'bg-white border-slate-200 hover:border-slate-400']">
+              {{ s.label }}
+              <span :class="['ml-1 font-medium', retryStatus === s.key ? 'text-white' : s.cls]">{{ s.count }}</span>
+            </button>
+            <button v-if="retryStatus" type="button" @click="retryStatus=''; loadNonInstant(1)"
+              class="px-2.5 py-1 rounded-md text-xs text-slate-500 hover:bg-slate-100">
+              清除筛选
+            </button>
+          </div>
           <div class="flex gap-2 items-center flex-wrap">
             <input v-model="retryQuery" @keyup.enter="loadNonInstant(1)" placeholder="搜索文件名/路径…"
               class="px-3 py-1.5 border border-slate-300 rounded-md text-sm w-56 focus:outline-none focus:ring-2 focus:ring-emerald-400">
@@ -593,14 +615,37 @@
 
         <!-- 115 -->
         <div class="bg-white rounded-lg border border-slate-200 p-5">
-          <h3 class="font-medium mb-4">115 网盘</h3>
+          <h3 class="font-medium mb-4 flex items-center gap-2">
+            115 网盘
+            <span v-if="settings.p115_cookie_set"
+              class="text-[11px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-normal">
+              ✓ Cookie 已配置
+            </span>
+            <span v-else
+              class="text-[11px] px-2 py-0.5 rounded-full bg-slate-200 text-slate-600 font-normal">
+              未配置
+            </span>
+          </h3>
           <div class="space-y-4">
             <div>
-              <label class="block text-xs text-slate-500 mb-1">Cookie</label>
-              <textarea v-model="form.p115_cookie" rows="3"
-                :placeholder="settings.p115_cookie_set ? '已设置，留空不修改' : 'UID=...; CID=...; SEID=...; KID=...'"
-                class="w-full px-3 py-2 border border-slate-300 rounded-md text-xs mono focus:outline-none focus:ring-2 focus:ring-emerald-400"></textarea>
-              <p v-if="settings.p115_cookie_set" class="text-[11px] text-slate-400 mt-1 mono">当前：{{ settings.p115_cookie_masked }}</p>
+              <label class="block text-xs text-slate-500 mb-1">
+                Cookie
+                <span v-if="settings.p115_cookie_set" class="text-slate-400">（留空表示不修改已保存的 Cookie）</span>
+              </label>
+              <div class="relative">
+                <textarea v-model="form.p115_cookie" rows="3"
+                  :placeholder="settings.p115_cookie_set ? '如需更换，在此粘贴新 Cookie；留空则保持不变' : '在此粘贴 115 Cookie：UID=...; CID=...; SEID=...; KID=...'"
+                  class="w-full px-3 py-2 pr-10 border border-slate-300 rounded-md text-xs mono focus:outline-none focus:ring-2 focus:ring-emerald-400"></textarea>
+                <button v-if="form.p115_cookie" @click="form.p115_cookie = ''"
+                  type="button" title="清空输入框"
+                  class="absolute top-2 right-2 w-5 h-5 flex items-center justify-center rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100">
+                  ✕
+                </button>
+              </div>
+              <p class="text-[11px] text-slate-400 mt-1">
+                保存后会写入 <code class="mono">/app/data/115-cookies.txt</code>（权限 600）。
+                <span v-if="settings.p115_cookie_set">当前已保存：<code class="mono">{{ settings.p115_cookie_masked }}</code></span>
+              </p>
             </div>
             <div class="grid sm:grid-cols-3 gap-4">
               <div>
@@ -635,21 +680,102 @@
 
         <!-- Webhook -->
         <div class="bg-white rounded-lg border border-slate-200 p-5">
-          <h3 class="font-medium mb-2">CD2 Webhook</h3>
-          <p class="text-xs text-slate-500 mb-3">
-            用于补全 gRPC 上传任务缺失的源路径，提升规则匹配准确度。
-            在 CD2 的 <code class="mono">[file_system_watcher]</code> 中把 url 指向：
+          <h3 class="font-medium mb-2 flex items-center gap-2">
+            CD2 Webhook
+            <span class="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-normal">可选功能</span>
+          </h3>
+          <p class="text-xs text-slate-500 mb-3 leading-relaxed">
+            <strong>作用</strong>：CD2 的上传任务接口只提供目标路径，不提供源文件路径。
+            接入 Webhook 后，CD2 会在文件变化时主动推送真实源路径，
+            使<strong>规则匹配更准确</strong>，并让「取消后重新上传」能工作。
+            <br>
+            <strong>不配置也能用</strong>，只是源路径匹配会退化为用目标路径推断。
           </p>
-          <div class="mono text-xs bg-slate-900 text-emerald-300 p-3 rounded break-all">
-            {{ webhookUrl }}
+
+          <!-- 步骤 1：回调地址 -->
+          <div class="mb-3">
+            <div class="text-xs font-medium text-slate-600 mb-1">① 回调地址（本服务）</div>
+            <div class="flex gap-2">
+              <div class="mono text-xs bg-slate-900 text-emerald-300 p-3 rounded break-all flex-1">
+                {{ webhookUrl }}
+              </div>
+              <button @click="copyText(webhookUrl)" type="button"
+                class="px-3 text-xs rounded bg-slate-100 hover:bg-slate-200 shrink-0">复制</button>
+            </div>
+            <p class="text-[11px] text-slate-400 mt-1">
+              注意：这个地址是给 <strong>CD2 所在机器</strong>访问的，
+              如果 CD2 在另一个容器里，请把域名部分换成它能访问到的地址
+              （如宿主机 IP）。
+            </p>
           </div>
-          <div class="mt-3">
+
+          <!-- 步骤 2：配置方式 -->
+          <div class="mb-3">
+            <div class="text-xs font-medium text-slate-600 mb-1">
+              ② 在 CD2 里配置（三种方式任选其一）
+            </div>
+            <div class="text-[11px] text-slate-500 space-y-1 mb-2 ml-1">
+              <div>
+                <strong>方式 A（推荐）</strong>：打开 CD2 网页 →
+                右上角设置 → <strong>Webhook</strong> 页面 → 按下方模板填写并勾选启用。
+              </div>
+              <div>
+                <strong>方式 B</strong>：编辑 CD2 配置文件 <code class="mono">config.toml</code>
+                （位于 CD2 的 <code class="mono">/Config</code> 目录），粘贴下方模板后重启 CD2。
+              </div>
+              <div>
+                <strong>方式 C</strong>：调用 CD2 的 gRPC 接口
+                <code class="mono">GetWebhookConfigTemplate</code> 获取模板再修改。
+              </div>
+            </div>
+            <div class="flex gap-2">
+              <pre class="flex-1 mono text-[11px] leading-relaxed bg-slate-900 text-slate-200 p-3 rounded overflow-auto max-h-72">{{ webhookTemplate }}</pre>
+              <button @click="copyText(webhookTemplate)" type="button"
+                class="px-3 text-xs rounded bg-slate-100 hover:bg-slate-200 shrink-0 self-start">复制</button>
+            </div>
+          </div>
+
+          <!-- 步骤 3：验证 -->
+          <div class="mb-3">
+            <div class="text-xs font-medium text-slate-600 mb-1">③ 验证是否生效</div>
+            <p class="text-[11px] text-slate-500 ml-1">
+              在 CD2 监控的源目录里新建一个文件，几秒后点下面的按钮，
+              能看到该文件名即表示 Webhook 已生效。
+            </p>
+            <button @click="checkWebhook()" type="button"
+              class="mt-2 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded text-xs">
+              查看已收到的源路径记录
+            </button>
+            <div v-if="webhookRecords.length" class="mt-2 border rounded overflow-hidden">
+              <table class="w-full text-[11px]">
+                <thead class="bg-slate-50 text-slate-500">
+                  <tr>
+                    <th class="px-2 py-1 text-left">文件名</th>
+                    <th class="px-2 py-1 text-left">源路径</th>
+                    <th class="px-2 py-1 text-left">时间</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="r in webhookRecords.slice(0, 8)" :key="r.id" class="border-t">
+                    <td class="px-2 py-1 max-w-[10rem] truncate" :title="r.file_name">{{ r.file_name }}</td>
+                    <td class="px-2 py-1 mono text-slate-500 max-w-[16rem] truncate" :title="r.source_path">{{ r.source_path }}</td>
+                    <td class="px-2 py-1 text-slate-400 whitespace-nowrap">{{ fmtTime(r.seen_at) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div v-else-if="webhookChecked" class="mt-2 text-[11px] text-amber-600">
+              还没有收到任何记录。请检查 CD2 侧 Webhook 是否已启用、地址是否可达。
+            </div>
+          </div>
+
+          <div class="pt-3 border-t border-slate-100">
             <label class="block text-xs text-slate-500 mb-1">Webhook 鉴权 Token（可选）</label>
-            <input v-model="form.webhook_token" :placeholder="settings.webhook_token_set?'已设置，留空不修改':'留空表示不校验'"
+            <input v-model="form.webhook_token" :placeholder="settings.webhook_token_set?'已设置，留空不修改':'留空表示不校验（内网环境建议留空）'"
               class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm mono focus:outline-none focus:ring-2 focus:ring-emerald-400">
             <p class="text-[11px] text-slate-400 mt-1">
-              填写后需在 CD2 的 <code class="mono">[global_params.default_headers]</code> 中配置相同的
-              <code class="mono">authorization</code>。
+              填写后，需在模板的 <code class="mono">[global_params.default_headers]</code>
+              中设置相同的 <code class="mono">authorization</code> 值，否则请求会被拒绝（401）。
             </p>
           </div>
         </div>
@@ -1149,6 +1275,13 @@ createApp({
         if (form.webhook_token !== '') payload.webhook_token = form.webhook_token;
 
         await api('PUT', '/api/settings', payload);
+        // 关键：保存成功后清空所有敏感输入框。
+        // 否则刚粘贴的 Cookie/Token 会一直留在框里，
+        // 用户会误以为没保存成功，或与下方"已保存"提示重复显示造成错乱。
+        form.cd2_token = '';
+        form.cd2_password = '';
+        form.p115_cookie = '';
+        form.webhook_token = '';
         showToast('设置已保存并应用', 'success');
         await loadSettings();
       } catch (e) {
@@ -1200,9 +1333,22 @@ createApp({
     const currentTab = computed(() => tabs.find(t => t.key === tab.value) || tabs[0]);
     const taskSubTabs = computed(() => [
       { key: 'live', label: '实时上传', count: dash.stats?.live_uploads || 0 },
-      { key: 'instant', label: '秒传详情', count: 0 },
+      { key: 'instant', label: '秒传详情', count: dash.stats?.today_instant || 0 },
       { key: 'retry', label: '重试队列', count: (dash.stats?.waiting_retry || 0) + (dash.stats?.retrying || 0) },
     ]);
+
+    // 重试队列各状态计数：点击可直接筛出对应记录。
+    // 解决「看到失败数字却找不到记录」的问题。
+    const retryStatChips = computed(() => {
+      const s = dash.stats || {};
+      return [
+        { key: 'waiting',   label: '等待重试', count: s.waiting_retry ?? 0,   cls: 'text-amber-600' },
+        { key: 'retrying',  label: '重试中',   count: s.retrying ?? 0,        cls: 'text-sky-600' },
+        { key: 'success',   label: '重试成功', count: s.retry_success ?? 0,   cls: 'text-emerald-600' },
+        { key: 'failed',    label: '最终失败', count: s.retry_failed ?? 0,    cls: 'text-rose-600' },
+        { key: 'cancelled', label: '已取消',   count: s.cancelled_retry ?? 0, cls: 'text-slate-500' },
+      ];
+    });
     const p115SubTabs = [
       { key: 'list', label: '任务列表' },
       { key: 'logs', label: '取消日志' },
@@ -1215,6 +1361,77 @@ createApp({
       const origin = window.location.origin;
       return `${origin}/api/webhook/cd2/file_notify`;
     });
+
+    // 可直接粘贴到 CD2 配置文件的完整模板
+    const webhookTemplate = computed(() => `[global_params]
+base_url = "${window.location.origin}"
+enabled = true
+
+[global_params.default_headers]
+content-type = "application/json"
+user-agent = "clouddrive2/{version}"
+
+[file_system_watcher]
+url = "{base_url}/api/webhook/cd2/file_notify?device_name={device_name}&user_name={user_name}"
+method = "POST"
+enabled = true
+body = '''
+{
+    "device_name": "{device_name}",
+    "user_name": "{user_name}",
+    "version": "{version}",
+    "event_category": "{event_category}",
+    "event_name": "{event_name}",
+    "event_time": "{event_time}",
+    "send_time": "{send_time}",
+    "data": [
+            {
+                "action": "{action}",
+                "is_dir": "{is_dir}",
+                "source_file": "{source_file}",
+                "destination_file": "{destination_file}"
+            }
+    ]
+}
+'''`);
+
+    const webhookRecords = ref([]);
+    const webhookChecked = ref(false);
+
+    const checkWebhook = async () => {
+      try {
+        webhookRecords.value = await api('GET', '/api/webhook/cd2/source-paths?limit=20');
+        webhookChecked.value = true;
+        if (webhookRecords.value.length) {
+          showToast(`已收到 ${webhookRecords.value.length} 条记录`, 'success');
+        }
+      } catch (e) {
+        showToast('查询失败：' + e.message, 'error');
+      }
+    };
+
+    const copyText = async (text) => {
+      try {
+        await navigator.clipboard.writeText(text);
+        showToast('已复制到剪贴板', 'success');
+      } catch {
+        // 非 https / 无权限时的兜底
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try {
+          document.execCommand('copy');
+          showToast('已复制到剪贴板', 'success');
+        } catch {
+          showToast('复制失败，请手动选中后复制', 'error');
+        }
+        document.body.removeChild(ta);
+      }
+    };
+
     const lastRefreshText = computed(() => fmtAgo(lastRefresh.value / 1000));
 
     // ---------- 定时器 ----------
@@ -1243,6 +1460,8 @@ createApp({
       events, settings, form, p115Config, taskTab, p115Tab, taskSubTabs, p115SubTabs,
       instantQuery, retryQuery, retryStatus, selectedRetry, allRetrySelected,
       ruleEditor, dashboardCards, thresholdHours, webhookUrl, testing,
+      retryStatChips,
+      webhookTemplate, webhookRecords, webhookChecked, checkWebhook, copyText,
       switchTab, refreshAll, fmtDur, fmtSize, fmtTime, fmtAgo,
       statusClass, retryStatusLabel, retryStatusClass, p115StatusLabel, p115StatusClass,
       openRuleEditor, saveRule, toggleRule, deleteRule, validateKeywords,

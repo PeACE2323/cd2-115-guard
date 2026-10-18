@@ -42,7 +42,8 @@ def list_live_tasks(
     now = utcnow_ts()
     rows = (
         session.query(UploadTaskSnapshot)
-        .filter(UploadTaskSnapshot.state.in_(("active", "intercepted")))
+        # queued 也要展示：CD2 有并发上限，排队中的任务在界面上是正常的
+        .filter(UploadTaskSnapshot.state.in_(("queued", "active", "intercepted")))
         .order_by(UploadTaskSnapshot.first_seen_at.asc())
         .all()
     )
@@ -50,7 +51,12 @@ def list_live_tasks(
     result: list[UploadTaskOut] = []
     for row in rows:
         item = UploadTaskOut.model_validate(row)
-        item.elapsed_sec = max(0.0, now - (row.first_seen_at or now))
+        total = max(0.0, now - (row.first_seen_at or now))
+        queued = float(row.queued_sec or 0.0)
+        item.elapsed_sec = total
+        item.queued_sec = queued
+        # 真正在传的耗时 = 总耗时 - 排队耗时
+        item.transfer_sec = max(0.0, total - queued)
         if row.size > 0:
             item.progress = min(100.0, row.transferred / row.size * 100.0)
         result.append(item)
@@ -252,7 +258,9 @@ def task_summary(session: Session = Depends(db_session)) -> dict[str, object]:
     )
     live_count = (
         session.query(func.count(UploadTaskSnapshot.id))
-        .filter(UploadTaskSnapshot.state.in_(("active", "intercepted")))
+        .filter(
+            UploadTaskSnapshot.state.in_(("queued", "active", "intercepted"))
+        )
         .scalar()
         or 0
     )

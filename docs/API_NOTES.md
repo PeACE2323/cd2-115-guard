@@ -159,7 +159,32 @@ CD2 的 gRPC 端口是**明文 HTTP/2 (h2c)**，需用：
 grpc.insecure_channel(target, options=[("grpc.keepalive_time_ms", 30000), ...])
 ```
 
-默认 gRPC 端口 19799（Web UI 19798）。错误信息要用 `e.details()` 取业务细节。
+### 端口：19798，**不是** 19799 **已核实（曾判断错误）**
+
+来自 CD2 官方帮助文档 `https://www.clouddrive2.com/en/help.html`：
+
+> The core service's management interface runs on **19798** — the same on
+> Windows, Linux, macOS, Android and inside Docker.
+> There is an HTTPS port too, **19799**. It is off by default — turn it on
+> and configure a certificate under Settings.
+
+即：
+
+| 端口 | 用途 | 状态 |
+|---|---|---|
+| **19798** | 核心服务：Web 管理界面 **+ gRPC**（同一个端口） | 默认开启 |
+| 19799 | HTTPS 管理端口 | **默认关闭**，需手动启用 |
+
+官方文档里的 nginx 反代示例也印证了这点：
+
+```nginx
+proxy_pass http://127.0.0.1:19798;   # your CD2 HTTP port
+```
+
+**本项目曾错误地把 19799 当成 gRPC 端口**，导致用户填 19799 连不上、
+填 19798 反而成功。已更正所有默认值与文档。
+
+错误信息要用 `e.details()` 取业务细节。
 
 ---
 

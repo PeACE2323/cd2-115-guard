@@ -51,19 +51,26 @@ def test_is_name_resolution_error_detects():
     print("✓ DNS 错误识别准确")
 
 
-def test_connection_refused_mentions_port_19799():
-    """端口不通时应特别提醒别用成 19798（Web 端口）。"""
+def test_connection_refused_mentions_correct_port():
+    """端口不通时应明确 19798 是对的、19799 不是 gRPC 端口。
+
+    这是一次真实误判的教训：项目曾错误地认为 gRPC 走 19799，
+    导致用户填 19799 连不上、填 19798 反而成功。
+    官方文档：核心服务（含 gRPC）在 19798；19799 是 HTTPS 端口且默认关闭。
+    """
     msg = CD2Client.diagnose_connection_error(
         "192.168.1.5:19798",
         "failed to connect to all addresses: Connection refused",
     )
     assert "连接被拒绝" in msg
-    assert "19798" in msg and "19799" in msg, "应明确指出 Web 端口与 gRPC 端口"
-    print("✓ 端口拒绝时提示 19799 而非 19798")
+    assert "19798" in msg, "应指明正确端口 19798"
+    assert "19799" in msg, "应说明 19799 不是 gRPC 端口"
+    assert "-p 19798:19798" in msg, "应给出端口映射写法"
+    print("✓ 端口拒绝时给出正确的 19798 指引")
 
 
 def test_timeout_hint():
-    msg = CD2Client.diagnose_connection_error("1.2.3.4:19799", "Deadline Exceeded")
+    msg = CD2Client.diagnose_connection_error("1.2.3.4:19798", "Deadline Exceeded")
     assert "超时" in msg
     print("✓ 超时提示")
 
@@ -76,16 +83,18 @@ def test_unknown_error_passthrough():
 
 
 def test_default_host_is_not_hardcoded_container_name():
-    """默认配置不应硬编码某个特定容器名。
+    """默认配置不应硬编码容器名，且端口必须是 19798。
 
-    之前默认值写死 clouddrive2:19799，但绝大多数部署里没有这个容器名，
-    导致用户一上手就遇到 DNS 解析失败。
+    两个都曾是真实故障：
+    1. 默认写死 clouddrive2:19799 —— 绝大多数部署没有这个容器名，DNS 解析失败
+    2. 端口误认为 19799 —— 实为 HTTPS 端口且默认关闭，连接失败
+       官方文档：核心服务（含 gRPC）在 19798。
     """
     from app.config import DEFAULT_SETTINGS
 
     host = DEFAULT_SETTINGS["cd2.host"]
     assert "clouddrive2" not in host, f"默认值不应硬编码容器名: {host}"
-    assert "19799" in host, "默认值应使用 gRPC 端口 19799"
+    assert host.endswith(":19798"), f"默认端口必须是 19798，实际: {host}"
     print(f"✓ 默认 CD2 地址妥当: {host}")
 
 

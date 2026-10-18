@@ -35,11 +35,14 @@ DATABASE_URL = f"sqlite:///{DB_PATH.as_posix()}"
 # ---------------------------------------------------------------------------
 DEFAULT_SETTINGS: dict[str, str] = {
     # 默认指向宿主机。CD2 常见三种部署方式对应：
-    #   * CD2 跑在宿主机 / NAS 套件     -> host.docker.internal:19799
-    #   * CD2 是另一个容器（已映射端口）-> 宿主机IP:19799 或 host.docker.internal:19799
-    #   * CD2 与本容器在同一 Docker 网络 -> <CD2容器名>:19799
-    # 注意 gRPC 端口是 19799，不是 Web UI 的 19798。
-    "cd2.host": os.environ.get("CD2_DEFAULT_HOST", "host.docker.internal:19799"),
+    #   * CD2 跑在宿主机 / NAS 套件     -> host.docker.internal:19798
+    #   * CD2 是另一个容器（已映射端口）-> 宿主机IP:19798 或 host.docker.internal:19798
+    #   * CD2 与本容器在同一 Docker 网络 -> <CD2容器名>:19798
+    #
+    # **端口必须是 19798**：CD2 的核心服务端口（含 gRPC）就是 19798，
+    # 与 Web 管理界面同一个端口。19799 是 HTTPS 端口且默认关闭，
+    # 不是 gRPC 端口 —— 详见 docs/API_NOTES.md「端口」一节。
+    "cd2.host": os.environ.get("CD2_DEFAULT_HOST", "host.docker.internal:19798"),
     "cd2.token": "",
     "cd2.username": "",
     "cd2.password": "",
@@ -70,13 +73,27 @@ CD2_STATUS_NAMES: dict[int, str] = {
     10: "FatalError",
 }
 
-CD2_STATUS_FINISH = 5          # 秒传成功的判定依据
+CD2_STATUS_FINISH = 5          # 已完成（含秒传）
 CD2_STATUS_CANCELLED = 2
 CD2_STATUS_PAUSE = 4
 CD2_STATUS_FAILED = {9, 10}    # Error / FatalError
 
-# 仍在“进行中”的状态集合：用于计算已持续上传时间
-CD2_STATUS_ACTIVE = {0, 1, 3, 7}
+# “真正在传输数据”的状态：只有这些才会被计入超时判定。
+#
+# 关键区别（踩过的坑）：
+#   Preprocessing(1) / Inqueue(7) / WaitforPreprocessing(0)
+#   属于「排队 / 预处理」阶段 —— CD2 有并发上限，任务在队列里等几十分钟是
+#   **正常现象**，并不代表「不能秒传」。若把它们计超时，会造成：
+#     * 大量误拦截
+#     * 秒传记录全部为空（因为耗时都被算成了超阈值）
+#     * 用户在 CD2 里看到任务还在正常上传，系统却已判超时
+CD2_STATUS_TRANSFERRING = {3}  # Transfer
+
+# 排队类状态：需要单独记录其时长，用于「排队超时」而非「上传超时」判定
+CD2_STATUS_QUEUED = {0, 1, 7}  # WaitforPreprocessing / Preprocessing / Inqueue
+
+# 仍算“活跃”（未结束）的全部状态
+CD2_STATUS_ACTIVE = CD2_STATUS_TRANSFERRING | CD2_STATUS_QUEUED
 
 # ---------------------------------------------------------------------------
 # 业务状态机

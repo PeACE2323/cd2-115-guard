@@ -210,10 +210,13 @@ class UploadTaskSnapshot(Base):
 
     first_seen_at: Mapped[float] = mapped_column(Float, nullable=False)
     last_seen_at: Mapped[float] = mapped_column(Float, nullable=False)
-    # active | done | intercepted | gone
+    # queued | active | intercepted | done | gone
     state: Mapped[str] = mapped_column(
         String(16), nullable=False, default="active", index=True
     )
+    # 累计排队时长（秒）：Preprocessing / Inqueue 阶段的累计时间。
+    # CD2 有并发上限，排队不计入「上传超时」，但需要展示给用户。
+    queued_sec: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     error_message: Mapped[str] = mapped_column(Text, nullable=False, default="")
 
     created_at: Mapped[datetime] = mapped_column(
@@ -383,10 +386,46 @@ def get_db() -> Iterator[Session]:
 # 初始化
 # ===========================================================================
 def init_db() -> None:
-    """建表 + 播种默认配置。"""
+    """建表 + 补齐新增列 + 播种默认配置。"""
     Base.metadata.create_all(engine)
+    migrate_added_columns()
     logger.info("数据库已就绪: %s", DB_PATH)
     seed_default_settings()
+
+
+def migrate_added_columns() -> None:
+    """给已存在的表补上后来新增的列。
+
+    ``create_all`` 只会建缺失的**表**，不会给已有表加**列**。
+    用户升级镜像时数据库还在，缺列会导致 SQL 报错，所以这里做最小迁移。
+
+    只做「加列」，不做删改，安全且幂等。
+    """
+    from sqlalchemy import inspect, text
+
+    # 表名 -> [(列名, 列定义)]
+    wanted: dict[str, list[tuple[str, str]]] = {
+        "upload_tasks": [
+            ("queued_sec", "FLOAT NOT NULL DEFAULT 0.0"),
+        ],
+    }
+
+    inspector = inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+
+    with engine.begin() as conn:
+        for table, columns in wanted.items():
+            if table not in existing_tables:
+                continue
+            have = {c["name"] for c in inspector.get_columns(table)}
+            for name, ddl in columns:
+                if name in have:
+                    continue
+                try:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
+                    logger.info("已为表 %s 添加列 %s", table, name)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("为表 %s 添加列 %s 失败: %s", table, name, exc)
 
 
 def seed_default_settings() -> None:

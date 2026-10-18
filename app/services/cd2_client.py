@@ -229,7 +229,7 @@ class CD2Client:
     用法::
 
         client = CD2Client()
-        await client.configure("clouddrive2:19799", token="xxx")
+        await client.configure("clouddrive2:19798", token="xxx")
         await client.connect()
         tasks = await client.list_upload_tasks()
 
@@ -282,7 +282,7 @@ class CD2Client:
         """把用户输入的 host 规整成 grpc target。
 
         接受 ``host:port``、``http://host:port``、``https://host:port``，
-        默认补齐 19799 端口（CD2 gRPC 端口）。
+        默认补齐 19798 端口（CD2 核心服务端口，gRPC 与此同端口）。
         """
         target = (host or "").strip()
         if not target:
@@ -296,10 +296,10 @@ class CD2Client:
             if "]:" not in target and not target.endswith("]"):
                 raise CD2NotConfigured(f"无法解析 CD2 地址: {host}")
             if target.endswith("]"):
-                target = f"{target}:19799"
+                target = f"{target}:19798"
             return target
         if ":" not in target:
-            target = f"{target}:19799"
+            target = f"{target}:19798"
         return target
 
     async def _build_channel(self) -> None:
@@ -464,8 +464,8 @@ class CD2Client:
                 "常见原因与解决办法：\n"
                 "1) 容器名写错，或 CD2 容器与本容器不在同一个 Docker 网络。\n"
                 "   若 CD2 是另一个容器：可用宿主机 IP，或把两个容器加入同一网络"
-                "（docker network connect <net> <container>）后用 <CD2容器名>:19799。\n"
-                "2) 若 CD2 在宿主机/NAS 上：用 host.docker.internal:19799，\n"
+                "（docker network connect <net> <container>）后用 <CD2容器名>:19798。\n"
+                "2) 若 CD2 在宿主机/NAS 上：用 host.docker.internal:19798，\n"
                 "   并在 docker run 时加 --add-host host.docker.internal:host-gateway。\n"
                 "3) 不要填 http:// 前缀，只填 host:port。"
             )
@@ -473,15 +473,17 @@ class CD2Client:
         if "connection refused" in lowered:
             return (
                 f"连接被拒绝：{target} 能解析，但该端口没有服务在监听。\n"
-                "最常见原因：填成了 CD2 的 Web 端口 19798。\n"
-                "**本项目走 gRPC，必须用 19799**，并确保 CD2 容器已映射该端口"
-                "（docker run 加 -p 19799:19799）。"
+                "请确认：\n"
+                "1) 端口应为 CD2 核心服务的 **19798**（gRPC 与 Web 同端口）。\n"
+                "   19799 是 HTTPS 管理端口且默认关闭，不是 gRPC 端口。\n"
+                "2) CD2 容器已映射该端口（docker run 加 -p 19798:19798）。\n"
+                "3) CD2 服务确实在运行。"
             )
 
         if "deadline" in lowered or "timeout" in lowered:
             return (
                 f"连接超时：{target} 无响应。\n"
-                "请确认端口是 19799（gRPC），且没有被防火墙拦截。"
+                "请确认端口是 19798（核心服务，gRPC 同端口），且没有被防火墙拦截。"
             )
 
         return f"无法连接 {target}：{detail}"
@@ -491,9 +493,9 @@ class CD2Client:
         """判断是否为 DNS 解析类错误（这类错误重试无意义）。
 
         覆盖 gRPC 在不同版本/平台下的几种措辞，包括真实的：
-            errors resolving clouddrive2:19799:
+            errors resolving clouddrive2:19798:
             [field:hostname lookup error:address lookup failed for
-             clouddrive2:19799: Domain name not found]
+             clouddrive2:19798: Domain name not found]
         """
         lowered = (detail or "").lower()
         return any(

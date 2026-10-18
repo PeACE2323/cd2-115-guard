@@ -137,7 +137,7 @@ WebUI 五个页面：
 
 | 键 | 说明 | 默认 |
 |---|---|---|
-| `cd2.host` | CD2 gRPC 地址 `host:port` | `clouddrive2:19799` |
+| `cd2.host` | CD2 服务地址 `host:port` | `host.docker.internal:19798` |
 | `cd2.token` | CD2 Bearer Token | 空 |
 | `cd2.poll_interval` | 上传任务轮询间隔（秒） | 3 |
 | `p115.cookie` | 115 Cookie | 空 |
@@ -145,7 +145,13 @@ WebUI 五个页面：
 | `p115.timeout_threshold` | 云下载最大允许耗时（秒） | 86400 |
 | `p115.auto_cancel` | 是否自动取消 | 1 |
 
-> CD2 的 gRPC 端口默认是 **19799**（Web UI 走 19798），请勿填错。
+> **端口是 19798，不是 19799。**
+>
+> 这是最容易填错的地方。按 CD2 官方文档：核心服务（含 gRPC）监听 **19798**，
+> 与 Web 管理界面同一个端口；**19799 是 HTTPS 管理端口且默认关闭**，
+> 不是 gRPC 端口。填 19799 会连接失败。
+>
+> 该端口需要与你 CD2 容器的 `-p` 映射一致（例如 `-p 19798:19798`）。
 
 ## 重试闭环（基于 CD2 备份任务）
 

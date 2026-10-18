@@ -432,12 +432,25 @@ class GuardScheduler:
                 snapshot.state = "intercepted"
                 continue
 
-            if (
-                task.status_enum in C.CD2_STATUS_ACTIVE
-                and elapsed > match.timeout_threshold
-            ):
-                # 携带 match，避免 _intercept_tasks 二次查库与状态丢失
-                intercept_queue.append((match, task))
+            # ★ 关键：只有 "Transfer"（真正在传数据）才计入上传超时。
+            #
+            # Preprocessing / Inqueue / WaitforPreprocessing 属于排队阶段，
+            # CD2 有并发上限，任务排队几十分钟是正常的，不能算「不能秒传」。
+            # 这里同时记录排队累计时长，供面板区分展示。
+            if task.status_enum in C.CD2_STATUS_QUEUED:
+                snapshot.state = "queued"
+                # 累计排队时长（按轮询间隔累加，避免依赖 CD2 提供的字段）
+                interval = max(0.0, now - (snapshot.last_seen_at or now))
+                snapshot.queued_sec = float(snapshot.queued_sec or 0.0) + interval
+                continue
+
+            if task.status_enum in C.CD2_STATUS_TRANSFERRING:
+                snapshot.state = "active"
+                # 真正的上传耗时 = 总耗时 - 排队耗时，避免排队时间被算进阈值
+                effective = max(0.0, elapsed - float(snapshot.queued_sec or 0.0))
+                if effective > match.timeout_threshold:
+                    intercept_queue.append((match, task))
+                continue
 
         # ---- 3. 执行拦截（限制单轮数量，避免打爆 CD2）----
         if intercept_queue:

@@ -154,6 +154,10 @@ class UploadTaskOut(ORMModel):
     # 派生字段（由 API 层填充）
     elapsed_sec: float = 0.0
     progress: float = 0.0
+    # 排队累计时长 / 实际传输时长：区分「排队等待」与「真的在传」，
+    # 避免用户误以为排队中的任务是卡住了
+    queued_sec: float = 0.0
+    transfer_sec: float = 0.0
 
 
 # ===========================================================================

@@ -22,6 +22,7 @@ SUITES = [
     "test_scope.py",
     "test_backup.py",
     "test_cd2_diag.py",
+    "test_timeout_logic.py",
 ]
 
 
