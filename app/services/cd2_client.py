@@ -549,6 +549,37 @@ class CD2Client:
         )
 
     # ------------------------------------------------------------ 认证
+    def mark_status(
+        self,
+        *,
+        connected: bool | None = None,
+        authenticated: bool | None = None,
+        user_name: str | None = None,
+        upload_count: int | None = None,
+        message: str | None = None,
+        last_error: str | None = None,
+    ) -> None:
+        """由定时任务更新连接状态快照。
+
+        仪表盘读的是 ``status``，而 ``test_connection()`` 只在用户手动
+        点击测试时才会更新它 —— 这导致重启后仪表盘一直显示「失败」，
+        直到用户手动点一次。定时轮询成功后也应更新这里。
+        """
+        if connected is not None:
+            self._status.connected = connected
+        if authenticated is not None:
+            self._status.authenticated = authenticated
+        if user_name is not None:
+            self._status.user_name = user_name
+        if upload_count is not None:
+            self._status.upload_count = upload_count
+        if message is not None:
+            self._status.message = message
+        if last_error is not None:
+            self._status.last_error = last_error
+        self._status.host = self._host
+        self._status.checked_at = utcnow_ts()
+
     async def fetch_token(self, username: str, password: str) -> str:
         """调用 ``GetToken`` 用账号密码换取 JWT（公开方法，无需 Bearer）。"""
         pb2, _ = _ProtoHolder.load()

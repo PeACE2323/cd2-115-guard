@@ -155,7 +155,6 @@ class GuardScheduler:
             max_instances=1,
             coalesce=True,
             misfire_grace_time=10,
-            next_run_time=None,
         )
         self.scheduler.add_job(
             self.process_retry_queue,
@@ -175,6 +174,17 @@ class GuardScheduler:
             coalesce=True,
             misfire_grace_time=60,
         )
+        # 连接健康检查：每 60 秒一次，且**启动时立即执行**。
+        # 仪表盘的状态由它维护，用户不再需要手动点「测试连接」。
+        self.scheduler.add_job(
+            self.health_check,
+            trigger=IntervalTrigger(seconds=60),
+            id="health_check",
+            name="连接健康检查",
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=30,
+        )
         self.scheduler.add_job(
             self.housekeeping,
             trigger=IntervalTrigger(hours=6),
@@ -187,6 +197,13 @@ class GuardScheduler:
         self.scheduler.start()
         self._started = True
         logger.info("调度器已启动")
+
+        # 立即做一次健康检查，让仪表盘在首屏就有正确状态
+        try:
+            await self.health_check()
+            logger.info("启动时健康检查已完成")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("启动时健康检查失败（不影响启动）: %s", exc)
 
     async def shutdown(self) -> None:
         """停止调度器并关闭连接。"""
@@ -263,17 +280,28 @@ class GuardScheduler:
         except CD2AuthError as exc:
             self.stats["cd2_last_ok"] = False
             self.stats["cd2_last_error"] = str(exc)
+            # 鉴权失败说明连通但 Token 无效
+            self.cd2.mark_status(
+                connected=True, authenticated=False, last_error=str(exc)
+            )
             log_event("error", "cd2", "CD2 鉴权失败", detail=str(exc))
             return
         except CD2Error as exc:
             self.stats["cd2_last_ok"] = False
             self.stats["cd2_last_error"] = str(exc)
+            self.cd2.mark_status(
+                connected=False, authenticated=False, last_error=str(exc)
+            )
             logger.warning("拉取 CD2 上传任务失败: %s", exc)
             return
 
         self.stats["cd2_last_ok"] = True
         self.stats["cd2_last_error"] = ""
         self.stats["cd2_tasks_seen"] = len(tasks)
+        # 轮询成功即证明「连通 + 鉴权」都正常，同步给仪表盘
+        self.cd2.mark_status(
+            connected=True, authenticated=True, last_error=""
+        )
 
         # ---- 用 webhook 映射补全真实源路径（弥补 gRPC 无源路径的缺陷）----
         # 失败不影响主流程：匹配会回退到 destPath 推导
@@ -1052,6 +1080,95 @@ class GuardScheduler:
                     logger.info("已裁剪 %d 条事件日志", removed)
         except Exception as exc:  # noqa: BLE001
             logger.warning("数据清理失败: %s", exc)
+
+    # ======================================================================
+    # 定时健康检查
+    # ======================================================================
+    async def health_check(self) -> None:
+        """定期探测 CD2 与 115 的连通性，并更新仪表盘用的状态。
+
+        **为什么需要这个任务**
+
+        仪表盘读的是 ``cd2.status.connected`` / ``p115.status.logged_in``，
+        而这两个字段原先只在用户**手动点击「连接测试」**时才被赋值。
+        结果：容器重启后仪表盘一直显示「失败 / 未验证」，
+        即使服务其实完全正常，必须手动点一次测试才恢复 —— 这正是
+        用户反馈的现象。
+
+        现在改为：启动时立即探一次，之后每 60 秒探一次，
+        状态由后台维护，无需人工干预。
+        """
+        await self._check_cd2()
+        await self._check_p115()
+
+    async def _check_cd2(self) -> None:
+        """探测 CD2 连通性与鉴权状态。"""
+        self.stats["cd2_health_run"] = utcnow_ts()
+
+        if not self.cd2.host:
+            self.cd2.mark_status(
+                connected=False,
+                authenticated=False,
+                last_error="未配置 CD2 地址",
+            )
+            return
+
+        try:
+            info = await self.cd2.get_system_info()
+        except CD2Error as exc:
+            self.cd2.mark_status(
+                connected=False, authenticated=False, last_error=str(exc)
+            )
+            self.stats["cd2_health_ok"] = False
+            logger.debug("CD2 健康检查失败: %s", exc)
+            return
+
+        # gRPC 通了；再确认 Token 能否真正读数据
+        authenticated = False
+        upload_count = 0
+        auth_error = ""
+        if self.cd2._token:  # noqa: SLF001 - 同模块内的状态查询
+            try:
+                counts = await self.cd2.get_all_tasks_count()
+                authenticated = True
+                upload_count = int(counts.get("upload_count", 0))
+            except CD2AuthError as exc:
+                auth_error = str(exc)
+            except CD2Error as exc:
+                auth_error = str(exc)
+
+        self.cd2.mark_status(
+            connected=True,
+            authenticated=authenticated,
+            user_name=info.get("user_name", "") or "",
+            upload_count=upload_count,
+            message=info.get("system_message", "") or "",
+            last_error=auth_error,
+        )
+        self.stats["cd2_health_ok"] = True
+        logger.debug(
+            "CD2 健康检查: 连通=True 鉴权=%s 上传队列=%d",
+            authenticated, upload_count,
+        )
+
+    async def _check_p115(self) -> None:
+        """探测 115 Cookie 是否仍有效。"""
+        self.stats["p115_health_run"] = utcnow_ts()
+
+        if not self.p115.configured:
+            self.p115.mark_status(logged_in=False, last_error="未配置 115 Cookie")
+            return
+
+        try:
+            result = await self.p115.check_login()
+        except Exception as exc:  # noqa: BLE001 - 健康检查绝不抛异常
+            self.p115.mark_status(logged_in=False, last_error=str(exc))
+            self.stats["p115_health_ok"] = False
+            return
+
+        self.stats["p115_health_ok"] = bool(result.get("ok"))
+        if not result.get("ok"):
+            logger.debug("115 健康检查失败: %s", result.get("message"))
 
     # ======================================================================
     # 供 API 调用的即时动作

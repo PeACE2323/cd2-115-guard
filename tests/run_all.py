@@ -24,6 +24,7 @@ SUITES = [
     "test_cd2_diag.py",
     "test_timeout_logic.py",
     "test_instant_upload.py",
+    "test_health.py",
 ]
 
 

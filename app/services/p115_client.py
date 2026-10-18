@@ -354,11 +354,41 @@ class P115ClientWrapper:
 
         return P115Error(f"调用 {method_name} 失败: {text}")
 
+    # ------------------------------------------------------------ 状态更新
+    def mark_status(
+        self,
+        *,
+        logged_in: bool | None = None,
+        user_id: int | None = None,
+        message: str | None = None,
+        last_error: str | None = None,
+        task_count: int | None = None,
+    ) -> None:
+        """由定时健康检查更新状态快照。
+
+        仪表盘读的是 ``status.logged_in``，原先只在用户手动点「连接测试」
+        时更新，导致重启后一直显示「未验证」。
+        """
+        if logged_in is not None:
+            self._status.logged_in = logged_in
+        if user_id is not None:
+            self._status.user_id = user_id
+        if message is not None:
+            self._status.message = message
+        if last_error is not None:
+            self._status.last_error = last_error
+        if task_count is not None:
+            self._status.task_count = task_count
+        self._status.configured = self.configured
+        self._status.checked_at = utcnow_ts()
+
     # ------------------------------------------------------------ 登录检查
     async def check_login(self) -> dict[str, Any]:
         """通过 ``fs_files``（根目录第一页）验证 Cookie 是否有效。"""
         result: dict[str, Any] = {"ok": False, "message": ""}
-        self._status = P115Status(configured=self.configured)
+        # 注意：不能整体重置 _status，否则会丢掉 task_count 等已有信息。
+        # 只更新与「登录有效性」相关的字段。
+        self._status.configured = self.configured
 
         if not self.configured:
             result["message"] = "未配置 115 Cookie"

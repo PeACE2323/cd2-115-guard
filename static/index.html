@@ -824,21 +824,73 @@
           </button>
         </div>
 
-        <!-- 事件日志 -->
-        <div class="bg-white rounded-lg border border-slate-200 p-5">
-          <h3 class="font-medium mb-3">最近事件</h3>
-          <div class="space-y-1 max-h-72 overflow-auto">
-            <div v-for="e in events" :key="e.id"
-              :class="['text-xs px-2 py-1.5 rounded flex gap-2',
-                e.level==='error'?'bg-rose-50 text-rose-700'
-                : e.level==='warning'?'bg-amber-50 text-amber-700':'bg-slate-50 text-slate-600']">
-              <span class="mono text-[10px] opacity-60 shrink-0">{{ fmtTime(e.created_at) }}</span>
-              <span class="font-medium shrink-0">[{{ e.source }}]</span>
-              <span class="break-all">{{ e.message }}</span>
-            </div>
-            <div v-if="!events.length" class="text-sm text-slate-400 py-4 text-center">暂无事件</div>
-          </div>
+      </div>
+
+      <!-- ============ 事件日志 ============ -->
+      <div v-if="tab==='logs'" class="space-y-4">
+        <div class="flex flex-wrap gap-2 items-center">
+          <button v-for="lv in logLevels" :key="lv.key" type="button"
+            @click="logLevel = (logLevel === lv.key ? '' : lv.key); loadEvents()"
+            :class="['px-2.5 py-1 rounded-md text-xs border transition',
+              logLevel === lv.key
+                ? 'bg-slate-800 text-white border-slate-800'
+                : 'bg-white border-slate-200 hover:border-slate-400']">
+            {{ lv.label }}
+          </button>
+          <div class="flex-1"></div>
+          <label class="flex items-center gap-1.5 text-xs text-slate-500">
+            <input type="checkbox" v-model="logAutoRefresh" class="rounded">
+            自动刷新
+          </label>
+          <button @click="loadEvents()" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-md text-sm">
+            刷新
+          </button>
         </div>
+
+        <div class="bg-white rounded-lg border border-slate-200 overflow-hidden">
+          <table class="w-full text-sm">
+            <thead class="bg-slate-50 text-slate-600 text-xs uppercase">
+              <tr>
+                <th class="px-3 py-2.5 text-left w-40">时间</th>
+                <th class="px-3 py-2.5 text-left w-20">级别</th>
+                <th class="px-3 py-2.5 text-left w-24">来源</th>
+                <th class="px-3 py-2.5 text-left">内容</th>
+              </tr>
+            </thead>
+            <tbody>
+              <template v-for="e in events" :key="e.id">
+                <tr class="border-t border-slate-100 hover:bg-slate-50/60 cursor-pointer"
+                  @click="e._open = !e._open">
+                  <td class="px-3 py-2 text-xs text-slate-500 whitespace-nowrap mono">{{ fmtTime(e.created_at) }}</td>
+                  <td class="px-3 py-2">
+                    <span :class="['text-[11px] px-1.5 py-0.5 rounded', logLevelClass(e.level)]">
+                      {{ logLevelLabel(e.level) }}
+                    </span>
+                  </td>
+                  <td class="px-3 py-2 text-xs text-slate-500">{{ e.source }}</td>
+                  <td class="px-3 py-2 text-xs">
+                    <div class="flex items-start gap-1">
+                      <span v-if="e.detail" class="text-slate-400 shrink-0 w-3">{{ e._open ? '▾' : '▸' }}</span>
+                      <span class="break-words" :class="e._open ? '' : 'line-clamp-2'">{{ e.message }}</span>
+                    </div>
+                    <div v-if="e._open && e.detail"
+                      class="mt-1.5 p-2 bg-slate-50 rounded text-[11px] text-slate-600 mono whitespace-pre-wrap break-all">
+                      {{ e.detail }}
+                    </div>
+                  </td>
+                </tr>
+              </template>
+              <tr v-if="!events.length">
+                <td colspan="4" class="px-4 py-12 text-center text-slate-400 text-sm">
+                  {{ logLevel ? '该级别下暂无事件' : '暂无事件' }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="text-xs text-slate-400">
+          显示最近 {{ events.length }} 条。CD2 断连、115 Cookie 失效、任务拦截与重试等都会记录在这里，便于排查问题。
+        </p>
       </div>
 
     </div>
@@ -971,7 +1023,8 @@ createApp({
       { key: 'rules',     label: 'CD2 规则', icon: '⚙️', desc: '配置源路径关键字、超时阈值与重试策略' },
       { key: 'tasks',     label: '任务监控', icon: '📤', desc: '实时上传、秒传记录与重试队列' },
       { key: 'p115',      label: '115 云下载', icon: '☁️', desc: '云下载任务、超时阈值与取消日志' },
-      { key: 'settings',  label: '系统设置', icon: '🔧', desc: 'CD2 / 115 连接配置与事件日志' },
+      { key: 'logs',      label: '事件日志', icon: '📋', desc: '系统事件、异常与任务操作记录' },
+      { key: 'settings',  label: '系统设置', icon: '🔧', desc: 'CD2 / 115 连接配置与 Webhook' },
     ];
 
     const dash = reactive({
@@ -984,6 +1037,20 @@ createApp({
     const offlineTasks = ref([]);
     const cancelLogsPage = reactive({ items: [], total: 0, page: 1, page_size: 50 });
     const events = ref([]);
+    // ---- 事件日志页 ----
+    const logLevel = ref('');
+    const logAutoRefresh = ref(false);
+    const logLevels = [
+      { key: 'error',   label: '错误' },
+      { key: 'warning', label: '警告' },
+      { key: 'info',    label: '信息' },
+    ];
+    const logLevelLabel = (lv) => ({ error: '错误', warning: '警告', info: '信息' }[lv] || lv);
+    const logLevelClass = (lv) => ({
+      error: 'bg-rose-100 text-rose-700',
+      warning: 'bg-amber-100 text-amber-700',
+      info: 'bg-slate-100 text-slate-600',
+    }[lv] || 'bg-slate-100 text-slate-600');
     const settings = reactive({ cd2_token_set: false, p115_cookie_set: false, webhook_token_set: false });
     const p115Config = reactive({ timeout_threshold: 86400, poll_interval: 300, auto_cancel: true });
 
@@ -1089,7 +1156,12 @@ createApp({
       Object.assign(cancelLogsPage, d);
     };
     const loadEvents = async () => {
-      events.value = await api('GET', '/api/settings/events?limit=80');
+      let url = '/api/settings/events?limit=200';
+      if (logLevel.value) url += '&level=' + encodeURIComponent(logLevel.value);
+      const rows = await api('GET', url);
+      // 保留展开状态，避免自动刷新时折叠
+      const openMap = new Map((events.value || []).map((e) => [e.id, e._open]));
+      events.value = (rows || []).map((e) => ({ ...e, _open: !!openMap.get(e.id) }));
     };
     const loadSettings = async () => {
       const d = await api('GET', '/api/settings');
@@ -1123,7 +1195,8 @@ createApp({
           await loadP115Config();
           if (p115Tab.value === 'logs') await loadCancelLogs(cancelLogsPage.page);
         }
-        if (tab.value === 'settings') { await loadSettings(); await loadEvents(); }
+        if (tab.value === 'settings') await loadSettings();
+        if (tab.value === 'logs') await loadEvents();
         lastRefresh.value = Date.now();
       } catch (e) {
         showToast('刷新失败：' + e.message, 'error');
@@ -1132,9 +1205,43 @@ createApp({
       }
     };
 
+    // ---------- 页签与 URL 同步 ----------
+    // 把当前页签写进 URL hash（如 #tasks），刷新后能回到原页。
+    // 之前没有做这件事，刷新总是跳回仪表盘。
+    const TAB_KEYS = ['dashboard', 'rules', 'tasks', 'p115', 'logs', 'settings'];
+
+    const readTabFromHash = () => {
+      const raw = (location.hash || '').replace(/^#\/?/, '').trim();
+      // 支持 #tasks 与 #tasks/live 这类写法，取第一段
+      const key = raw.split('/')[0];
+      return TAB_KEYS.includes(key) ? key : 'dashboard';
+    };
+
+    const writeTabToHash = (key) => {
+      const target = `#${key}`;
+      if (location.hash !== target) {
+        // 用 replaceState 避免污染浏览器前进/后退历史
+        try {
+          history.replaceState(null, '', target);
+        } catch {
+          location.hash = key;
+        }
+      }
+    };
+
     const switchTab = async (key) => {
       tab.value = key;
+      writeTabToHash(key);
       await refreshAll();
+    };
+
+    // 浏览器前进/后退时同步页签
+    const onHashChange = async () => {
+      const key = readTabFromHash();
+      if (key !== tab.value) {
+        tab.value = key;
+        await refreshAll();
+      }
     };
 
     // ---------- 规则操作 ----------
@@ -1471,6 +1578,11 @@ body = '''
     // ---------- 定时器 ----------
     let timer = null;
     onMounted(async () => {
+      // 先按 URL hash 恢复页签，再拉数据（避免先渲染仪表盘再跳走）
+      tab.value = readTabFromHash();
+      writeTabToHash(tab.value);
+      window.addEventListener('hashchange', onHashChange);
+
       try {
         const v = await api('GET', '/api/version');
         version.value = v.version;
@@ -1483,15 +1595,21 @@ body = '''
         try {
           await loadDashboard();
           if (tab.value === 'tasks' && taskTab.value === 'live') await loadLive();
+          // 事件日志页：按用户勾选自动刷新
+          if (tab.value === 'logs' && logAutoRefresh.value) await loadEvents();
         } catch { /* 静默 */ }
       }, 10000);
     });
-    onUnmounted(() => { if (timer) clearInterval(timer); });
+    onUnmounted(() => {
+      if (timer) clearInterval(timer);
+      window.removeEventListener('hashchange', onHashChange);
+    });
 
     return {
       version, tab, tabs, currentTab, loading, saving, toast, dash, lastRefreshText,
       rules, liveTasks, instantPage, nonInstantPage, offlineTasks, cancelLogsPage,
       events, settings, form, p115Config, taskTab, p115Tab, taskSubTabs, p115SubTabs,
+      logLevel, logLevels, logAutoRefresh, logLevelLabel, logLevelClass,
       instantQuery, retryQuery, retryStatus, selectedRetry, allRetrySelected,
       ruleEditor, dashboardCards, thresholdHours, webhookUrl, testing,
       retryStatChips,
@@ -1502,7 +1620,7 @@ body = '''
       toggleAllRetry, batchRetry, singleRetry, batchCancelRetry, batchDeleteRetry,
       deleteRetryOne, clearInstant, loadInstant, loadNonInstant,
       refreshOffline, cancelOffline, clearCancelLogs, loadCancelLogs,
-      saveSettings, loadSettings, testCd2, testP115, fetchToken,
+      saveSettings, loadSettings, testCd2, testP115, fetchToken, loadEvents,
     };
   }
 }).mount('#app');

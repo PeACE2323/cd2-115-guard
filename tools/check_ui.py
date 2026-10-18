@@ -162,10 +162,24 @@ def check(path: Path) -> list[str]:
     # ---- 收集模板里出现的标识符 ----
     used: set[str] = set()
 
+    def collect(expr: str) -> None:
+        """收集表达式里的顶层标识符。
+
+        需要排除 ``$event.target.value`` 这类 **属性访问链** 中的
+        ``target``/``value`` —— 它们不是 setup() 需要暴露的名字，
+        否则会产生误报。
+        """
+        # 去掉所有 .prop 与 $event 派生访问
+        cleaned = re.sub(r"\.\s*[A-Za-z_$][\w$]*", "", expr)
+        cleaned = cleaned.replace("$event", "")
+        # 去掉对象字面量的键名 key:
+        cleaned = re.sub(r"\b[A-Za-z_$][\w$]*\s*:(?!:)", "", cleaned)
+        used.update(IDENT_RE.findall(cleaned))
+
     for m in MUSTACHE_RE.finditer(template):
-        used.update(IDENT_RE.findall(m.group(1)))
+        collect(m.group(1))
     for m in BINDING_RE.finditer(template):
-        used.update(IDENT_RE.findall(m.group(1)))
+        collect(m.group(1))
 
     # v-for 的循环变量是局部作用域，不算未定义
     local_vars: set[str] = set()
