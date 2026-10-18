@@ -16,6 +16,13 @@
   ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px}
   ::-webkit-scrollbar-thumb:hover{background:#94a3b8}
   .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  /* 全局兜底：超长且不含空格的字符串（Cookie/Token/哈希/长路径）
+     默认不换行，会把卡片撑破、溢出到页面外。
+     这里让它们能在容器内断行。用 anywhere 而非 break-all，
+     可以优先在原本的断点处换行，观感更好。 */
+  .mono, code, .breakAnywhere{overflow-wrap:anywhere}
+  /* 表单控件不得超出父容器 */
+  input, textarea, select{max-width:100%}
 </style>
 </head>
 <body class="text-slate-800">
@@ -583,22 +590,32 @@
       </div>
 
       <!-- ============ 系统设置 ============ -->
-      <div v-if="tab==='settings'" class="space-y-5 max-w-4xl">
+      <div v-if="tab==='settings'" class="space-y-5">
         <!-- CD2 -->
         <div class="bg-white rounded-lg border border-slate-200 p-5">
           <h3 class="font-medium mb-4">CloudDrive2</h3>
-          <div class="grid sm:grid-cols-2 gap-4">
-            <div>
-              <label class="block text-xs text-slate-500 mb-1">gRPC 地址（host:port）</label>
-              <input v-model="form.cd2_host" placeholder="clouddrive2:19799"
+          <div class="grid gap-x-4 gap-y-4 sm:grid-cols-2 xl:grid-cols-3">
+            <div class="sm:col-span-2 xl:col-span-2">
+              <label class="block text-xs text-slate-500 mb-1">CD2 地址（host:port）</label>
+              <input v-model="form.cd2_host" placeholder="192.168.1.10:19798"
                 class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm mono focus:outline-none focus:ring-2 focus:ring-emerald-400">
-              <p class="text-[11px] text-slate-400 mt-1">gRPC 端口默认 <b>19799</b>（Web UI 是 19798）</p>
+              <p class="text-[11px] text-slate-400 mt-1">
+                端口填 <b>19798</b>（CD2 核心服务，Web 与 gRPC 同端口）。
+              </p>
             </div>
-            <div>
+            <div class="sm:col-span-2 xl:col-span-1">
+              <label class="block text-xs text-slate-500 mb-1">上传任务轮询间隔（秒）</label>
+              <input v-model.number="form.cd2_poll_interval" type="number" min="2"
+                class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400">
+              <p class="text-[11px] text-slate-400 mt-1">越小越及时，建议 3～5 秒。</p>
+            </div>
+            <div class="sm:col-span-2 xl:col-span-3">
               <label class="block text-xs text-slate-500 mb-1">API Token</label>
               <input v-model="form.cd2_token" :placeholder="settings.cd2_token_set ? '已设置，留空不修改' : '粘贴 CD2 API Token'"
                 class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm mono focus:outline-none focus:ring-2 focus:ring-emerald-400">
-              <p v-if="settings.cd2_token_set" class="text-[11px] text-slate-400 mt-1 mono">当前：{{ settings.cd2_token_masked }}</p>
+              <p v-if="settings.cd2_token_set" class="text-[11px] text-slate-400 mt-1 mono">
+                当前：{{ settings.cd2_token_masked }}
+              </p>
             </div>
             <div>
               <label class="block text-xs text-slate-500 mb-1">CD2 账号（可选，用于换取 Token）</label>
@@ -610,13 +627,8 @@
               <input v-model="form.cd2_password" type="password" :placeholder="settings.cd2_password_set?'已设置，留空不修改':''"
                 class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400">
             </div>
-            <div>
-              <label class="block text-xs text-slate-500 mb-1">上传任务轮询间隔（秒）</label>
-              <input v-model.number="form.cd2_poll_interval" type="number" min="2"
-                class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400">
-            </div>
           </div>
-          <div class="flex gap-2 mt-4">
+          <div class="flex flex-wrap gap-2 mt-4">
             <button @click="testCd2()" :disabled="testing.cd2"
               class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-md text-sm disabled:opacity-50">
               {{ testing.cd2?'测试中…':'连接测试' }}
@@ -650,42 +662,49 @@
               <div class="relative">
                 <textarea v-model="form.p115_cookie" rows="3"
                   :placeholder="settings.p115_cookie_set ? '如需更换，在此粘贴新 Cookie；留空则保持不变' : '在此粘贴 115 Cookie：UID=...; CID=...; SEID=...; KID=...'"
-                  class="w-full px-3 py-2 pr-10 border border-slate-300 rounded-md text-xs mono focus:outline-none focus:ring-2 focus:ring-emerald-400"></textarea>
+                  class="w-full px-3 py-2 pr-10 border border-slate-300 rounded-md text-xs mono resize-y break-all focus:outline-none focus:ring-2 focus:ring-emerald-400"></textarea>
                 <button v-if="form.p115_cookie" @click="form.p115_cookie = ''"
                   type="button" title="清空输入框"
                   class="absolute top-2 right-2 w-5 h-5 flex items-center justify-center rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100">
                   ✕
                 </button>
               </div>
-              <p class="text-[11px] text-slate-400 mt-1">
+              <p class="text-[11px] text-slate-400 mt-1 break-words">
                 保存后会写入 <code class="mono">/app/data/115-cookies.txt</code>（权限 600）。
-                <span v-if="settings.p115_cookie_set">当前已保存：<code class="mono">{{ settings.p115_cookie_masked }}</code></span>
+                <span v-if="settings.p115_cookie_set">
+                  当前已保存：<code class="mono break-all">{{ settings.p115_cookie_masked }}</code>
+                </span>
               </p>
             </div>
-            <div class="grid sm:grid-cols-3 gap-4">
+            <div class="grid gap-4 sm:grid-cols-3 xl:grid-cols-3">
               <div>
-                <label class="block text-xs text-slate-500 mb-1">Cloud 下载轮询间隔（秒）</label>
+                <label class="block text-xs text-slate-500 mb-1">云下载轮询间隔（秒）</label>
                 <input v-model.number="form.p115_poll_interval" type="number" min="30"
                   class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400">
+                <p class="text-[11px] text-slate-400 mt-1">建议 300～600 秒</p>
               </div>
               <div>
                 <label class="block text-xs text-slate-500 mb-1">超时阈值（小时）</label>
                 <input :value="thresholdHours" @input="form.p115_timeout_threshold = Math.max(1,Number($event.target.value)) * 3600"
                   type="number" min="1" step="0.5"
                   class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400">
+                <p class="text-[11px] text-slate-400 mt-1">超过此时长的未完成任务会被取消</p>
               </div>
               <div>
                 <label class="block text-xs text-slate-500 mb-1">每页任务数</label>
                 <input v-model.number="form.p115_task_page_size" type="number" min="10" max="200"
                   class="w-full px-3 py-2 border border-slate-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400">
+                <p class="text-[11px] text-slate-400 mt-1">每次拉取的任务条数</p>
               </div>
             </div>
-            <label class="flex items-center gap-2 text-sm">
-              <input type="checkbox" v-model="form.p115_auto_cancel" class="rounded">
-              超过阈值时自动取消云下载任务（只移除离线任务，不删除已下载文件）
+            <label class="flex items-start gap-2 text-sm">
+              <input type="checkbox" v-model="form.p115_auto_cancel" class="rounded mt-0.5 shrink-0">
+              <span>超过阈值时自动取消云下载任务
+                <span class="text-slate-400">（只移除离线任务，不删除已下载文件）</span>
+              </span>
             </label>
           </div>
-          <div class="flex gap-2 mt-4">
+          <div class="flex flex-wrap gap-2 mt-4">
             <button @click="testP115()" :disabled="testing.p115"
               class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-md text-sm disabled:opacity-50">
               {{ testing.p115?'测试中…':'连接测试' }}

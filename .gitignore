@@ -19,3 +19,8 @@ app/proto/clouddrive_pb2_grpc.py
 *.egg-info/
 .DS_Store
 Thumbs.db
+
+# 开发期视觉验证产物（tools/make_preview.py 生成）
+static/_preview.html
+static/_shot*.png
+backend_check_report.txt
